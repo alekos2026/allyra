@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="theme-color" content="#0a0f1e"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <title>ALLYRA</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { background:#0a0f1e; font-family:'Segoe UI',sans-serif; }
+    #root { max-width:480px; margin:0 auto; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useRef, useCallback, useEffect } = React;
+
+const STORAGE_KEY = 'allyra_data_v1';
+function saveData(data) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch(e) {} }
+function loadData() { try { const d=localStorage.getItem(STORAGE_KEY); return d?JSON.parse(d):null; } catch(e) { return null; } }
+
+const CATEGORIES = {
+  antalaktika: { label:"Ανταλλακτικά", color:"#5b8cff", emoji:"🔧" },
+  estiation:   { label:"Εστίαση",      color:"#ff6b6b", emoji:"🍔" },
+  kava:        { label:"Κάβα",         color:"#f5c518", emoji:"🍷" },
+  super:       { label:"Σούπερ Μάρκετ",color:"#00e5a0", emoji:"🛒" },
+  trapeza:     { label:"Τράπεζα",      color:"#a78bfa", emoji:"🏦" },
+};
+
+const PROJECTS = [
+  { id:1,  name:"ELTREKKA Ταύρος",        cat:"antalaktika", client:"ELTREKKA",     address:"Πειραιώς 180, Ταύρος",                     rateDay:12.00, rateNight:null,  rateSun:null,  status:"active" },
+  { id:2,  name:"ELTREKKA Ηλιούπολη",     cat:"antalaktika", client:"ELTREKKA",     address:"Βουλιαγμένης 429, Ηλιούπολη",              rateDay:12.00, rateNight:null,  rateSun:null,  status:"active" },
+  { id:3,  name:"ELTREKKA Αιγάλεω",       cat:"antalaktika", client:"ELTREKKA",     address:"Λ.Αθηνών 369, Αιγάλεω",                   rateDay:12.00, rateNight:null,  rateSun:null,  status:"active" },
+  { id:4,  name:"ELTREKKA Χαλάνδρι",      cat:"antalaktika", client:"ELTREKKA",     address:"Λ.Ηρακλείτου 74, Χαλάνδρι",               rateDay:12.00, rateNight:null,  rateSun:null,  status:"active" },
+  { id:5,  name:"SCAMA Παπού 19",         cat:"antalaktika", client:"SCAMA",        address:"Παπού 19, Αθήνα",                          rateDay:12.25, rateNight:null,  rateSun:null,  status:"active" },
+  { id:6,  name:"SCAMA Νέα Ιωνία",        cat:"antalaktika", client:"SCAMA",        address:"Ιφιγενείας 79, Νέα Ιωνία",                 rateDay:12.25, rateNight:null,  rateSun:null,  status:"active" },
+  { id:7,  name:"SCAMA Καλλιθέα",         cat:"antalaktika", client:"SCAMA",        address:"Ελ.Βενιζέλου 363, Καλλιθέα",              rateDay:12.25, rateNight:null,  rateSun:null,  status:"active" },
+  { id:8,  name:"SCAMA Χαλάνδρι",         cat:"antalaktika", client:"SCAMA",        address:"Μεσογείων 311, Χαλάνδρι",                  rateDay:12.25, rateNight:null,  rateSun:null,  status:"active" },
+  { id:9,  name:"Ανδρεαδάκης",            cat:"antalaktika", client:"Ανδρεαδάκης",  address:"Νίρβανα 35, Κάτω Πατήσια",                rateDay:12.50, rateNight:null,  rateSun:null,  status:"active" },
+  { id:10, name:"Παπούτσης",              cat:"antalaktika", client:"Παπούτσης",    address:"Λεωφ.Φυλής 141",                           rateDay:12.50, rateNight:null,  rateSun:null,  status:"active" },
+  { id:11, name:"INTERPART Αιγάλεω",      cat:"antalaktika", client:"INTERPART",    address:"Παράλληλη Λεωφ.Κηφισού 44, Αιγάλεω",     rateDay:12.50, rateNight:13.00, rateSun:15.00, status:"active" },
+  { id:12, name:"Τρικούπης - Bosch",      cat:"antalaktika", client:"Αφοί Τρικούπη",address:"24ο χλμ ΕΟ Αθηνών-Κορίνθου, Ελευσίνα",  rateDay:12.50, rateNight:null,  rateSun:null,  status:"active" },
+  { id:13, name:"Intercars Ελευσίνα",     cat:"antalaktika", client:"Intercars",    address:"Κουβίδη 31, Ελευσίνα",                    rateDay:12.50, rateNight:null,  rateSun:null,  status:"active" },
+  { id:14, name:"Intercars Ρέντης",       cat:"antalaktika", client:"Intercars",    address:"Στρ.Μακρυγιάννη 45, Αγ.Ιωάννης Ρέντης",  rateDay:12.50, rateNight:null,  rateSun:null,  status:"active" },
+  { id:15, name:"Intercars Αιγάλεω",      cat:"antalaktika", client:"Intercars",    address:"Εμμανουήλ Παππά 11, Αιγάλεω",             rateDay:12.50, rateNight:null,  rateSun:null,  status:"active" },
+  { id:16, name:"Intercars Νέα Ιωνία",    cat:"antalaktika", client:"Intercars",    address:"Ελ.Βενιζέλου & Ν.Μηλιώρη, Νέα Ιωνία",    rateDay:12.50, rateNight:null,  rateSun:null,  status:"active" },
+  { id:17, name:"Intercars Μενίδι",       cat:"antalaktika", client:"Intercars",    address:"Λεωφ.Ιωνίας 50, Αχαρνές",                 rateDay:12.50, rateNight:null,  rateSun:null,  status:"active" },
+  { id:18, name:"Intercars Κορωπί",       cat:"antalaktika", client:"Intercars",    address:"Ηφαίστου 8, Κρωπία",                       rateDay:12.50, rateNight:null,  rateSun:null,  status:"active" },
+  { id:19, name:"Παναγιώτου Autoparts",   cat:"antalaktika", client:"Παναγιώτου",   address:"Παπούλα 5, Αιγάλεω",                       rateDay:12.50, rateNight:null,  rateSun:null,  status:"active" },
+  { id:20, name:"Βαρατάσης",              cat:"antalaktika", client:"Σ.Βαρατάσης",  address:"Αθηνών 13, Άνω Λιόσια",                   rateDay:12.50, rateNight:null,  rateSun:null,  status:"active" },
+  { id:21, name:"Eman Fuller",            cat:"antalaktika", client:"Eman Fuller",  address:"Κροκεών 16, Αθήνα",                        rateDay:12.50, rateNight:null,  rateSun:null,  status:"active" },
+  { id:22, name:"Γρατσίας",              cat:"antalaktika", client:"Γρατσίας",     address:"",                                          rateDay:12.50, rateNight:null,  rateSun:null,  status:"active" },
+  { id:23, name:"Γρηγόρης Κηφισιά",      cat:"estiation",   client:"Γρηγόρης",     address:"Γεωρ.Λύρα 19, Κηφισιά",                   rateDay:12.00, rateNight:null,  rateSun:null,  status:"active" },
+  { id:24, name:"Goodys Π.Φάληρο",       cat:"estiation",   client:"Goodys",       address:"",                                          rateDay:11.00, rateNight:13.00, rateSun:14.50, status:"stopped" },
+  { id:25, name:"Κάβα Νέκταρ",           cat:"kava",        client:"Κάβα Νέκταρ",  address:"Ερμού 121, Αθήνα",                         rateDay:12.00, rateNight:13.50, rateSun:16.00, status:"active" },
+  { id:26, name:"My Market",             cat:"super",       client:"My Market",    address:"Χαλανδρίου 17, Αγ.Παρασκευή",              rateDay:12.00, rateNight:null,  rateSun:null,  status:"active" },
+  { id:27, name:"Eurobank",              cat:"trapeza",     client:"Eurobank",     address:"Λεωφ.Ηρακλείτου 332",                      rateDay:12.00, rateNight:null,  rateSun:null,  status:"active" },
+];
+
+const ASSIGNMENTS = [
+  { driverId:1,  projectId:1,  shift:"09:00-17:00", days:"Δευ-Παρ" },
+  { driverId:2,  projectId:1,  shift:"08:30-16:30", days:"Δευ-Παρ" },
+  { driverId:3,  projectId:1,  shift:"09:00-17:00", days:"Δευ-Παρ" },
+  { driverId:4,  projectId:2,  shift:"09:00-17:00", days:"Δευ-Παρ" },
+  { driverId:5,  projectId:2,  shift:"09:00-17:00", days:"Δευ-Παρ" },
+  { driverId:6,  projectId:2,  shift:"09:00-17:00", days:"Δευ-Παρ" },
+  { driverId:7,  projectId:3,  shift:"08:30-16:30", days:"Δευ-Παρ" },
+  { driverId:8,  projectId:3,  shift:"09:00-17:00", days:"Δευ-Παρ" },
+  { driverId:9,  projectId:3,  shift:"09:00-17:00", days:"Δευ-Παρ" },
+  { driverId:10, projectId:4,  shift:"09:00-17:00", days:"Δευ-Παρ" },
+  { driverId:11, projectId:4,  shift:"09:00-17:00", days:"Δευ-Παρ" },
+  { driverId:12, projectId:5,  shift:"09:00-17:00", days:"Δευ-Παρ" },
+  { driverId:13, projectId:5,  shift:"09:00-17:00", days:"Δευ-Παρ" },
+  { driverId:14, projectId:6,  shift:"09:00-17:00", days:"Δευ-Παρ" },
+  { driverId:15, projectId:7,  shift:"09:00-16:00", days:"Δευ-Παρ" },
+  { driverId:16, projectId:7,  shift:"09:00-16:00", days:"Δευ-Παρ" },
+  { driverId:17, projectId:9,  shift:"09:00-17:00", days:"Δευ-Παρ" },
+  { driverId:18, projectId:10, shift:"09:00-17:00", days:"Δευ-Παρ" },
+  { driverId:19, projectId:11, shift:"08:30-16:30", days:"Δευ-Παρ" },
+  { driverId:29, projectId:13, shift:"09:00-18:00", days:"Δευ-Παρ/Σαβ 09-13" },
+  { driverId:40, projectId:13, shift:"09:00-17:00", days:"Δευ-Παρ" },
+  { driverId:60, projectId:14, shift:"09:00-17:00", days:"Δευ-Παρ/Σαβ 09-14" },
+  { driverId:54, projectId:18, shift:"09:00-17:00", days:"Δευ-Παρ" },
+  { driverId:55, projectId:17, shift:"09:00-17:00", days:"Δευ-Παρ" },
+  { driverId:36, projectId:21, shift:"09:00-17:00", days:"Δευ-Παρ" },
+  { driverId:22, projectId:22, shift:"09:00-17:00", days:"Δευ-Παρ" },
+  { driverId:51, projectId:22, shift:"09:00-17:00", days:"Δευ-Παρ" },
+  { driverId:26, projectId:22, shift:"09:00-17:00", days:"Δευ-Παρ" },
+  { driverId:45, projectId:12, shift:"09:00-17:00", days:"Δευ-Παρ" },
+  { driverId:23, projectId:23, shift:"09:00-13:00", days:"Δευ-Παρ" },
+  { driverId:42, projectId:25, shift:"10:00-18:00", days:"Καθημερινά" },
+  { driverId:43, projectId:25, shift:"18:00-02:00", days:"Καθημερινά" },
+  { driverId:37, projectId:26, shift:"10:00-20:00", days:"Δευ-Σαβ" },
+  { driverId:49, projectId:27, shift:"09:30-15:30", days:"Δευ-Παρ" },
+  { driverId:46, projectId:27, shift:"09:30-15:30", days:"Δευ-Παρ" },
+  { driverId:34, projectId:27, shift:"10:00-14:00", days:"Δευ-Παρ" },
+];
+
+const DRIVERS = [
+  { id:1,  name:"Συμεωνίδης Στάθης",              phone:"6973848202", moto:"ΒΡΕ 337",  motoType:"company", status:"active", area:"Καλλιθέα" },
+  { id:2,  name:"Κρήτης Δημήτρης",                phone:"6993763912", moto:"ΔΙΚΟ ΤΟΥ", motoType:"own",     status:"active", area:"Μοσχάτο" },
+  { id:3,  name:"Γεωργικός Γεώργιος",             phone:"6906868685", moto:"ΟΤΚ 769",  motoType:"company", status:"active", area:"Καλλιθέα" },
+  { id:4,  name:"Πατεράκης Παύλος",               phone:"6974692442", moto:"ΒΡΕ 327",  motoType:"company", status:"active", area:"Γλυφάδα" },
+  { id:5,  name:"Σταυριανέας Γιώργος",            phone:"6945369050", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"" },
+  { id:6,  name:"Πηγής Δημήτρης",                 phone:"6980486306", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Νέα Σμύρνη" },
+  { id:7,  name:"Κόντος Άγγελος",                 phone:"6972452154", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Νίκαια" },
+  { id:8,  name:"Γκιώτας Αλέξανδρος",             phone:"6944804472", moto:"ΒΜΥ 452",  motoType:"company", status:"active", area:"Κυψέλη" },
+  { id:9,  name:"Παπακωνσταντινόπουλος Ευάγγελος",phone:"6937407638", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Αγ.Ανάργυροι" },
+  { id:10, name:"Γρίβας Χριστόφορος",             phone:"6981994622", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Χαλάνδρι" },
+  { id:11, name:"Λεπετζίδης Αντώνης",             phone:"",           moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"" },
+  { id:12, name:"Βουλτσίος Νίκος",                phone:"6975949545", moto:"ΒΡΕ 329",  motoType:"company", status:"active", area:"Πειραιάς" },
+  { id:13, name:"Κωστόπουλος Ιωάννης",            phone:"6946369895", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Ζωγράφου" },
+  { id:14, name:"Μακρίδης Σούλης",                phone:"6984244640", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Πειραιάς" },
+  { id:15, name:"Damir Aubakirov",                phone:"6979424640", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Καλλιθέα" },
+  { id:16, name:"Ραδίτσας Παντελής",              phone:"6948667190", moto:"BPE 517",  motoType:"company", status:"active", area:"Ζωγράφου" },
+  { id:17, name:"Μουσταφά Αχμέτ",                phone:"6981904981", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Πανόρμου" },
+  { id:18, name:"Σαγκούρης Παναγιώτης",           phone:"6978285086", moto:"ΔΙΚΟ ΤΟΥ", motoType:"own",     status:"active", area:"Κορυδαλλός" },
+  { id:19, name:"Τσαλκίτζης Γιώργος",             phone:"6970909950", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"" },
+  { id:20, name:"Αδάμ Ιωάννης",                  phone:"6934291724", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Ίλιον" },
+  { id:21, name:"Αθανασόπουλος Γιώργος",          phone:"6946556392", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Κυψέλη" },
+  { id:22, name:"Αγγελίδης Χαράλαμπος",           phone:"6982110865", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Ψυχικό" },
+  { id:23, name:"Βάσος Βελισάριος",               phone:"6970500019", moto:"ΒΡΕ 328",  motoType:"company", status:"active", area:"Κηφισιά" },
+  { id:24, name:"Βελισσάριος Γιώργος",            phone:"6971966728", moto:"ΔΙΚΟ ΤΟΥ", motoType:"own",     status:"active", area:"Χολαργός" },
+  { id:25, name:"Γκιωνάκης Κωνσταντίνος",         phone:"6934715121", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Ίλιον" },
+  { id:26, name:"Γιαννουλιάς Νίκος",              phone:"6906583259", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Χαλκηδόνα" },
+  { id:27, name:"Δεπάστας Νίκος",                 phone:"6980810513", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Μαρούσι" },
+  { id:28, name:"Διουλγερίδης Χαράλαμπος",        phone:"6980091147", moto:"OTK 771",  motoType:"company", status:"active", area:"Αιγάλεω" },
+  { id:29, name:"Δρουλίσκος Βαγγέλης",            phone:"6948599895", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Νέα Φιλαδέλφεια" },
+  { id:30, name:"Καραπαναγιώτης Δημοσθένης",      phone:"6978778545", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Μοσχάτο" },
+  { id:31, name:"Καραπιπέρης Αντώνης",            phone:"6986007054", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Καμίνια" },
+  { id:32, name:"Κουτάβας Κώστας",                phone:"6947373636", moto:"ΔΙΚΟ ΤΟΥ", motoType:"own",     status:"active", area:"Παλαιό Φάληρο" },
+  { id:33, name:"Κουσούμης Προκόπιος",            phone:"6937138001", moto:"ΔΙΚΟ ΤΟΥ", motoType:"own",     status:"active", area:"Γέρακας" },
+  { id:34, name:"Κλάδης Γιάννης",                 phone:"6942669323", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Βριλήσσια" },
+  { id:35, name:"Κρασανάκης Κώστας",              phone:"6977224941", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Μαρούσι" },
+  { id:36, name:"Μ'αίκα Ηλίας",                  phone:"6940728661", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Κυψέλη" },
+  { id:37, name:"Μακρής Γιάννης",                 phone:"6940167265", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Ψυχικό" },
+  { id:38, name:"Μαρινέλης Τάσος",                phone:"6988710707", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Νέα Σμύρνη" },
+  { id:39, name:"Μαυρομάτης Χάρης",               phone:"6981349979", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Πειραιάς" },
+  { id:40, name:"Μαλισόβας Ιωάννης",              phone:"6937016670", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Παρνήθος" },
+  { id:41, name:"Μουστάκας Τριανταφύλλος",        phone:"6976915201", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Περιστέρι" },
+  { id:42, name:"Μεσσαλάς Τριαντάφυλλος",         phone:"6984088984", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Χαϊδάρι" },
+  { id:43, name:"Ουρενάς Θόδωρος",                phone:"6946404220", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Εξάρχεια" },
+  { id:44, name:"Παπαγιάννης Αλέξανδρος",         phone:"6974701174", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Βύρωνας" },
+  { id:45, name:"Παπασπυρόπουλος Δημοσθένης",     phone:"6982314320", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Σεπόλια" },
+  { id:46, name:"Πόθος Άγγελος",                  phone:"6944959397", moto:"ΒΡΕ-514",  motoType:"company", status:"active", area:"Καλλιθέα" },
+  { id:47, name:"Πρίφτης Κώστας",                 phone:"6937458008", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"" },
+  { id:48, name:"Ριχάρδος Πίνδο",                 phone:"6939401428", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Αμπελόκηποι" },
+  { id:49, name:"Σαλαμβάς Γιώργος",               phone:"6947994290", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Άνω Πατήσια" },
+  { id:50, name:"Σούμπας Νίκος",                  phone:"6945490849", moto:"ΒΜΡ 591",  motoType:"company", status:"active", area:"Περιστέρι" },
+  { id:51, name:"Σουρβίνος Γιάννης",              phone:"6932760937", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Αχαρνών" },
+  { id:52, name:"Στάμπας Ιλαρίων",                phone:"6987331440", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Περιστέρι" },
+  { id:53, name:"Σταυρόπουλος Δημήτρης",          phone:"6977193688", moto:"ΟΤΚ 717",  motoType:"company", status:"active", area:"Καισαριανή" },
+  { id:54, name:"Σωτηριάδης Βασίλης",             phone:"6932711944", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Κορωπί" },
+  { id:55, name:"Τριανταφυλλόπουλος Πάνος",       phone:"6987332066", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Μενίδι" },
+  { id:56, name:"Τσάκος Πάρης",                   phone:"6907549924", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Αιγάλεω" },
+  { id:57, name:"Ψαράς Ανδρέας",                  phone:"6942930192", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Γαλάτσι" },
+  { id:58, name:"Botros Osama",                   phone:"6997466328", moto:"ΔΙΚΟ ΜΑΣ", motoType:"company", status:"active", area:"Καλλιθέα" },
+  { id:59, name:"Γκίνης Γιώργος",                 phone:"6978282346", moto:"ΝΟΙΚΑΖΕΙ", motoType:"company", status:"active", area:"Παγκράτι" },
+  { id:60, name:"Πόγκας Απόστολος",               phone:"6943111370", moto:"ΔΙΚΟ ΤΟΥ", motoType:"own",     status:"active", area:"Καισαριανή" },
+];
+
+const PARTNERS = [
+  { id:1,  name:"Μητούδης Δημήτρης",        role:"Εργολάβος (ο ίδιος)",   rate:10.00, notes:"Intercars Αιγάλεω/Ν.Ιωνία" },
+  { id:2,  name:"Μπασιμακόπουλος Δημήτρης", role:"Οδηγός Μητούδη",        rate:9.50,  notes:"Intercars Αιγάλεω" },
+  { id:3,  name:"Κωστάκης Αλέξανδρος",      role:"Οδηγός Μητούδη",        rate:9.50,  notes:"Intercars Αιγάλεω" },
+  { id:4,  name:"Μιχαηλίδης Αθανάσιος",     role:"Οδηγός Μητούδη",        rate:9.50,  notes:"Intercars Αιγάλεω" },
+  { id:5,  name:"Πετράκης Αντρέας",         role:"Οδηγός Μητούδη",        rate:9.50,  notes:"" },
+  { id:6,  name:"Κουκογιάννης Γιάννης",     role:"Οδηγός Μητούδη",        rate:9.50,  notes:"" },
+  { id:7,  name:"Καρτασάκης Δημήτρης",      role:"Οδηγός Μητούδη",        rate:9.50,  notes:"" },
+  { id:8,  name:"Καραμιχάλης Βαγγέλης",     role:"Οδηγός Μητούδη",        rate:9.50,  notes:"Παναγιώτου Autoparts" },
+  { id:9,  name:"Πατραμάνης Χάρης",         role:"Οδηγός Μητούδη",        rate:9.50,  notes:"Intercars Νέα Ιωνία" },
+  { id:10, name:"Μαζχάρ Μοίζ",             role:"Οδηγός Μητούδη",        rate:9.50,  notes:"Τρικούπης/Intercars Αιγάλεω" },
+  { id:11, name:"Αήταρ Ομάν",              role:"Εξωτερικός Συνεργάτης", rate:9.50,  notes:"SCAMA Χαλάνδρι 09:00-17:00" },
+  { id:12, name:"Σωτηρόπουλος Διαμαντής",  role:"Εξωτερικός Συνεργάτης", rate:9.50,  notes:"Βαρατάσης/Intercars Μενίδι" },
+  { id:13, name:"Πέτσας Τέλης",            role:"Ελ.Επαγγελματίας",      rate:9.50,  notes:"Intercars Αιγάλεω 08:00-15:00" },
+  { id:14, name:"Sabir (Σάκης)",           role:"Εργολάβος Val",         rate:9.50,  notes:"Intercars Νέα Ιωνία 08:30-16:30" },
+];
+
+const RATES = {
+  company: { normal:5.30, overtime:6.35, night:7.90, sunday:9.30 },
+  own:     { normal:6.50, overtime:7.55, night:9.10, sunday:10.50 },
+};
+
+async function callAllyra(sys, history, newMsg) {
+  const API_KEY = "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";
+  const messages = [
+    ...history.slice(-10).map(m => ({ role: m.role==="user"?"user":"assistant", content: m.text })),
+    { role:"user", content:newMsg }
+  ];
+  const res = await fetch("/api/chat", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({ system: sys, messages }),
+  });
+  const d = await res.json();
+  return d.content?.[0]?.text || "Δεν κατάλαβα. Δοκίμασε ξανά.";
+}
+
+const scol = s => s==="active"?"#00e5a0":s==="absent"?"#ff6b6b":"#888";
+const fmtEur = n => `€${Number(n).toFixed(2)}`;
+
+function App() {
+  const [tab, setTab] = useState("home");
+  const [drivers, setDrivers] = useState(() => { const d=loadData(); return d?.drivers||DRIVERS; });
+  const [log, setLog] = useState(() => { const d=loadData(); return d?.log||[
+    { id:1, ts:"2026-07-01 09:00", type:"system", text:"ALLYRA v4 — 60 οδηγοί, 27 projects, 14 συνεργάτες." },
+    { id:2, ts:"2026-06-30 17:00", type:"project", text:"Goodys Π.Φάληρο — Διακοπή project." },
+  ]; });
+  const [chatOpen, setChatOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [catFilter, setCatFilter] = useState("all");
+  const [messages, setMessages] = useState([
+    {role:"assistant", text:"Γεια σου Alex! Έχω φορτώσει 60 οδηγούς, 27 projects σε 5 κατηγορίες και 14 συνεργάτες. Πώς μπορώ να σε βοηθήσω;"}
+  ]);
+  const [input, setInput] = useState("");
+  const [listening, setListening] = useState(false);
+  const [thinking, setThinking] = useState(false);
+  const [notif, setNotif] = useState(null);
+  const [calcOpen, setCalcOpen] = useState(false);
+  const [calcH, setCalcH] = useState("");
+  const [calcType, setCalcType] = useState("normal");
+  const [calcMoto, setCalcMoto] = useState("company");
+  const [calcDT, setCalcDT] = useState("employee");
+  const recRef = useRef(null);
+  const msgEnd = useRef(null);
+
+  // AUTO-SAVE σε κάθε αλλαγή
+  useEffect(() => { saveData({ drivers, log }); }, [drivers, log]);
+
+  useEffect(() => { if(msgEnd.current) msgEnd.current.scrollIntoView({behavior:"smooth"}); }, [messages]);
+
+  const notify = (text, type="info") => { setNotif({text,type}); setTimeout(()=>setNotif(null),4000); };
+  const addLog = (text, type) => { const ts=new Date().toLocaleString("el-GR"); setLog(p=>[{id:Date.now(),ts,type,text},...p]); };
+
+  const buildPrompt = useCallback(() => {
+    const dl = drivers.map(d => {
+      const asgn = ASSIGNMENTS.filter(a=>a.driverId===d.id);
+      const pNames = asgn.map(a=>{ const pr=PROJECTS.find(p=>p.id===a.projectId); return pr?`${pr.name}(${a.shift})`:""}).filter(Boolean).join(", ");
+      return `- ${d.name}|${d.status==="active"?"✓":"✗"}|${pNames||"Χωρίς project"}|${d.moto}(${d.motoType==="own"?"ιδ":"εταιρ"})|τηλ:${d.phone||"—"}|${d.area||"—"}`;
+    }).join("\n");
+    const pl = PROJECTS.filter(p=>p.status==="active").map(p=>{
+      const pD = ASSIGNMENTS.filter(a=>a.projectId===p.id).map(a=>{ const dr=drivers.find(d=>d.id===a.driverId); return dr?dr.name.split(" ")[0]:"";}).filter(Boolean).join(",");
+      return `- ${p.name}|${p.address||"—"}|€${p.rateDay}/ώρα|Οδηγοί:${pD||"—"}`;
+    }).join("\n");
+    return `Είσαι η ALLYRA, ψηφιακή AI γραμματέας courier εταιρείας, μόνο ελληνικά. Χρήστης: Alex (διευθυντής).\nΟΔΗΓΟΙ(${drivers.length}):\n${dl}\nPROJECTS:\n${pl}\nRATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κυρ€9.30. Ιδιόκτ+€1.20. Εργολάβος:€9.50(δικό τους)/€8.50(δικό μας).\nΑπάντα σύντομα(max 4 προτάσεις). Αν ζητά αλλαγή, αναγνώρισέ την. Αν ζητά κοστολόγηση, υπολόγισε.`;
+  }, [drivers]);
+
+  const sendMsg = useCallback(async (txt, currentMsgs) => {
+    if (!txt.trim()) return;
+    const updated = [...currentMsgs, {role:"user", text:txt}];
+    setMessages(updated);
+    setInput(""); setThinking(true);
+    try {
+      const r = await callAllyra(buildPrompt(), currentMsgs, txt);
+      setMessages(p=>[...p, {role:"assistant", text:r}]);
+      const lo=txt.toLowerCase();
+      if (lo.includes("απουσί")||lo.includes("απών")) { addLog(txt,"absence"); notify("Απουσία καταχωρήθηκε ✓","success"); }
+      else if (lo.includes("αντικατάστα")) { addLog(txt,"substitution"); notify("Αντικατάσταση καταχωρήθηκε ✓","success"); }
+      else if (lo.includes("project")||lo.includes("έργο")) addLog(txt,"project");
+    } catch(e) { setMessages(p=>[...p,{role:"assistant",text:"Σφάλμα σύνδεσης."}]); }
+    finally { setThinking(false); }
+  }, [buildPrompt]);
+
+  const startListen = () => {
+    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if (!SR) { notify("Χρησιμοποίησε Chrome για φωνή","warning"); return; }
+    const r=new SR(); r.lang="el-GR"; r.continuous=false; r.interimResults=false;
+    r.onstart=()=>setListening(true); r.onend=()=>setListening(false);
+    r.onresult=e=>{ const t=e.results[0][0].transcript; setInput(t); setTimeout(()=>sendMsg(t,messages),300); };
+    r.onerror=()=>{ setListening(false); notify("Δεν άκουσα. Ξαναπροσπάθησε.","warning"); };
+    recRef.current=r; r.start();
+  };
+
+  const calcResult = () => {
+    const h=parseFloat(calcH)||0; if(!h) return null;
+    let rate = calcDT==="partner" ? (calcMoto==="own"?9.50:8.50) : RATES[calcMoto][calcType];
+    return {h, rate, total:(h*rate).toFixed(2)};
+  };
+
+  const activeD=drivers.filter(d=>d.status==="active").length;
+  const absentD=drivers.filter(d=>d.status==="absent").length;
+  const assignedD=[...new Set(ASSIGNMENTS.map(a=>a.driverId))].length;
+  const activeP=PROJECTS.filter(p=>p.status==="active").length;
+
+  const filtD=drivers.filter(d=>
+    d.name.toLowerCase().includes(search.toLowerCase())||
+    (d.area||"").toLowerCase().includes(search.toLowerCase())||
+    d.moto.toLowerCase().includes(search.toLowerCase())
+  );
+  const filtP=PROJECTS.filter(p=>
+    (catFilter==="all"||p.cat===catFilter)&&
+    (p.name.toLowerCase().includes(search.toLowerCase())||p.client.toLowerCase().includes(search.toLowerCase()))
+  );
+
+  const S = {
+    app:{background:"#0a0f1e",color:"#e8eaf6",minHeight:"100vh",fontFamily:"'Segoe UI',sans-serif"},
+    topBar:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",background:"#0d1428",borderBottom:"1px solid #1e2a4a",position:"sticky",top:0,zIndex:100},
+    logo:{fontSize:20,fontWeight:900,letterSpacing:6,color:"#00e5a0"},
+    content:{paddingBottom:80},
+    view:{padding:"16px"},
+    card:{background:"#0d1428",border:"1px solid #1e2a4a",borderRadius:12,padding:14,marginBottom:10},
+    cardName:{fontSize:15,fontWeight:700,marginBottom:3},
+    cardSub:{fontSize:12,color:"#778",lineHeight:1.7},
+    badge:{fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20},
+    bottomNav:{display:"flex",justifyContent:"space-around",alignItems:"center",background:"#0d1428",borderTop:"1px solid #1e2a4a",padding:"10px 0 14px",position:"fixed",bottom:0,left:0,right:0,zIndex:100},
+    navBtn:{display:"flex",flexDirection:"column",alignItems:"center",gap:2,background:"none",border:"none",cursor:"pointer",padding:"4px 8px",fontFamily:"inherit"},
+    searchBar:{display:"flex",alignItems:"center",gap:8,background:"#0d1428",border:"1px solid #1e2a4a",borderRadius:30,padding:"10px 14px",marginBottom:12,color:"#445"},
+    searchInput:{flex:1,background:"none",border:"none",color:"#e8eaf6",fontSize:13,outline:"none",fontFamily:"inherit"},
+    chatPanel:{position:"fixed",bottom:70,left:0,right:0,background:"#0d1428",borderTop:"2px solid #00e5a0",borderRadius:"20px 20px 0 0",display:"flex",flexDirection:"column",height:"65vh",zIndex:200},
+    msgs:{flex:1,overflowY:"auto",padding:"12px 14px",display:"flex",flexDirection:"column",gap:8},
+    bubble:{maxWidth:"82%",padding:"10px 14px",fontSize:14,lineHeight:1.5,fontWeight:500},
+    inputRow:{display:"flex",gap:6,padding:"10px 12px",borderTop:"1px solid #1e2a4a",alignItems:"center"},
+    textInput:{flex:1,background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:30,padding:"10px 16px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",outline:"none"},
+    overlay:{position:"fixed",inset:0,background:"#000b",zIndex:500,display:"flex",alignItems:"flex-end"},
+    modal:{background:"#0d1428",border:"2px solid #f5c518",borderRadius:"20px 20px 0 0",width:"100%",maxHeight:"88vh",display:"flex",flexDirection:"column"},
+  };
+
+  const TABS = [
+    {id:"home",     emoji:"🏠", label:"Αρχή"},
+    {id:"drivers",  emoji:"👤", label:"Οδηγοί"},
+    {id:"projects", emoji:"📋", label:"Projects"},
+    {id:"partners", emoji:"🤝", label:"Συνεργάτες"},
+    {id:"log",      emoji:"📝", label:"Αρχείο"},
+  ];
+
+  return (
+    <div style={S.app}>
+      {notif && <div style={{position:"fixed",top:60,left:"50%",transform:"translateX(-50%)",background:notif.type==="success"?"#00e5a0":notif.type==="warning"?"#f5c518":"#5b8cff",color:"#0a0f1e",fontWeight:700,fontSize:13,padding:"10px 20px",borderRadius:30,zIndex:9999,whiteSpace:"nowrap"}}>{notif.text}</div>}
+
+      <div style={S.topBar}>
+        <div style={S.logo}>ALLYRA</div>
+        <div style={{display:"flex",gap:8}}>
+          <button style={{width:36,height:36,borderRadius:"50%",background:"#f5c51822",border:"1px solid #f5c518",color:"#f5c518",cursor:"pointer",fontSize:16}} onClick={()=>setCalcOpen(true)}>€</button>
+          <button style={{display:"flex",alignItems:"center",padding:"6px 12px",borderRadius:30,cursor:"pointer",fontFamily:"inherit",background:chatOpen?"#ff6b6b22":"#00e5a022",color:chatOpen?"#ff6b6b":"#00e5a0",border:`1px solid ${chatOpen?"#ff6b6b":"#00e5a0"}`}} onClick={()=>setChatOpen(v=>!v)}>
+            <span style={{fontSize:14}}>{chatOpen?"✕":"🎙"}</span>
+            <span style={{marginLeft:5,fontSize:12,fontWeight:700}}>{chatOpen?"Κλείσιμο":"ALLYRA AI"}</span>
+          </button>
+        </div>
+      </div>
+
+      <div style={S.content}>
+        {tab==="home" && (
+          <div style={S.view}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+              <div>
+                <div style={{fontSize:22,fontWeight:700}}>Καλημέρα, Alex</div>
+                <div style={{fontSize:12,color:"#556",marginTop:2}}>Πέμπτη, 2 Ιουλίου 2026</div>
+              </div>
+              <div style={{width:44,height:44,borderRadius:"50%",background:"linear-gradient(135deg,#00e5a0,#5b8cff)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,fontWeight:900,color:"#0a0f1e"}}>A</div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>
+              {[
+                {label:"Σύνολο Οδηγών",value:drivers.length,color:"#00e5a0"},
+                {label:"Ενεργά Projects",value:activeP,color:"#5b8cff"},
+                {label:"Σε Project",value:assignedD,color:"#f5c518"},
+                {label:"Απόντες",value:absentD,color:"#ff6b6b"},
+              ].map((k,i)=>(
+                <div key={i} style={{...S.card,borderTop:`3px solid ${k.color}`}}>
+                  <div style={{fontSize:26,fontWeight:900,color:k.color}}>{k.value}</div>
+                  <div style={{fontSize:11,color:"#778"}}>{k.label}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{fontSize:11,fontWeight:700,letterSpacing:2,color:"#445",textTransform:"uppercase",marginBottom:10}}>Κατηγορίες Projects</div>
+            {Object.entries(CATEGORIES).map(([key,cat])=>{
+              const count=PROJECTS.filter(p=>p.cat===key&&p.status==="active").length;
+              return (
+                <button key={key} style={{display:"flex",alignItems:"center",gap:12,background:"#0d1428",border:"1px solid #1e2a4a",borderLeft:`3px solid ${cat.color}`,borderRadius:12,padding:"12px 16px",cursor:"pointer",fontFamily:"inherit",marginBottom:8,width:"100%"}} onClick={()=>{setTab("projects");setCatFilter(key);}}>
+                  <span style={{fontSize:20}}>{cat.emoji}</span>
+                  <span style={{flex:1,fontSize:14,fontWeight:600,color:"#e8eaf6",textAlign:"left"}}>{cat.label}</span>
+                  <span style={{fontSize:12,fontWeight:700,background:cat.color+"22",color:cat.color,padding:"2px 8px",borderRadius:20}}>{count}</span>
+                </button>
+              );
+            })}
+            <div style={{fontSize:11,fontWeight:700,letterSpacing:2,color:"#445",textTransform:"uppercase",marginBottom:10,marginTop:16}}>Πρόσφατες Μεταβολές</div>
+            {log.slice(0,3).map(l=>(
+              <div key={l.id} style={{display:"flex",gap:10,alignItems:"flex-start",background:"#0d1428",border:"1px solid #1e2a4a",borderRadius:10,padding:"10px 12px",marginBottom:8}}>
+                <div style={{width:8,height:8,borderRadius:"50%",flexShrink:0,marginTop:5,background:l.type==="absence"?"#ff6b6b":l.type==="substitution"?"#f5c518":"#5b8cff"}}/>
+                <div>
+                  <div style={{fontSize:13,color:"#b0b8d0",lineHeight:1.4}}>{l.text}</div>
+                  <div style={{fontSize:11,color:"#445",marginTop:3}}>{l.ts}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tab==="drivers" && (
+          <div style={S.view}>
+            <div style={{fontSize:20,fontWeight:800,marginBottom:12}}>Οδηγοί <span style={{fontSize:12,fontWeight:700,background:"#1e2a4a",color:"#778",padding:"2px 8px",borderRadius:20}}>{filtD.length}</span></div>
+            <div style={S.searchBar}>
+              <span>🔍</span>
+              <input style={S.searchInput} placeholder="Όνομα, περιοχή, πινακίδα..." value={search} onChange={e=>setSearch(e.target.value)}/>
+            </div>
+            {filtD.map(d=>{
+              const asgn=ASSIGNMENTS.filter(a=>a.driverId===d.id);
+              const pNames=asgn.map(a=>{ const pr=PROJECTS.find(p=>p.id===a.projectId); return pr?pr.name:"";}).filter(Boolean);
+              return (
+                <div key={d.id} style={S.card}>
+                  <div style={{display:"flex",gap:12,alignItems:"flex-start"}}>
+                    <div style={{width:42,height:42,borderRadius:"50%",background:"linear-gradient(135deg,#1a2540,#2a3560)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,fontWeight:700,color:"#00e5a0",flexShrink:0}}>{d.name[0]}</div>
+                    <div style={{flex:1}}>
+                      <div style={S.cardName}>{d.name}</div>
+                      {pNames.length>0 ? pNames.map((n,i)=><div key={i} style={{...S.cardSub,color:"#5b8cff"}}>{n} · {asgn[i]?.shift}</div>) : <div style={{...S.cardSub,color:"#445"}}>Χωρίς project</div>}
+                      <div style={S.cardSub}>{d.moto} · {d.motoType==="own"?"Ιδιόκτητο":"Εταιρικό"} · {d.area||"—"}</div>
+                      {d.phone && <div style={S.cardSub}>📞 {d.phone}</div>}
+                    </div>
+                    <div style={{...S.badge,background:scol(d.status)+"22",color:scol(d.status),border:`1px solid ${scol(d.status)}`}}>{d.status==="active"?"Ενεργός":"Απών"}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {tab==="projects" && (
+          <div style={S.view}>
+            <div style={{fontSize:20,fontWeight:800,marginBottom:12}}>Projects <span style={{fontSize:12,fontWeight:700,background:"#1e2a4a",color:"#778",padding:"2px 8px",borderRadius:20}}>{filtP.length}</span></div>
+            <div style={S.searchBar}>
+              <span>🔍</span>
+              <input style={S.searchInput} placeholder="Αναζήτηση..." value={search} onChange={e=>setSearch(e.target.value)}/>
+            </div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+              {[["all","Όλα","#778"],...Object.entries(CATEGORIES).map(([k,v])=>[k,v.emoji+" "+v.label,v.color])].map(([k,l,c])=>(
+                <button key={k} style={{fontSize:11,fontWeight:700,padding:"5px 10px",borderRadius:20,cursor:"pointer",fontFamily:"inherit",background:catFilter===k?(c+"33"):"#0d1428",color:catFilter===k?c:"#556",border:`1px solid ${catFilter===k?c:"#1e2a4a"}`}} onClick={()=>setCatFilter(k)}>{l}</button>
+              ))}
+            </div>
+            {filtP.map(p=>{
+              const cat=CATEGORIES[p.cat];
+              const pD=ASSIGNMENTS.filter(a=>a.projectId===p.id).map(a=>{ const dr=drivers.find(d=>d.id===a.driverId); return dr?{name:dr.name,shift:a.shift,days:a.days}:null;}).filter(Boolean);
+              const pP=PARTNERS.filter(pt=>pt.notes&&pt.notes.toLowerCase().includes(p.name.toLowerCase()));
+              return (
+                <div key={p.id} style={{...S.card,opacity:p.status==="stopped"?0.5:1}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+                    <div style={{flex:1}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
+                        <span style={{fontSize:16}}>{cat.emoji}</span>
+                        <span style={S.cardName}>{p.name}</span>
+                      </div>
+                      {p.address && <div style={{fontSize:11,color:"#556"}}>{p.address}</div>}
+                    </div>
+                    <div style={{...S.badge,background:p.status==="stopped"?"#88822":cat.color+"22",color:p.status==="stopped"?"#888":cat.color,border:`1px solid ${p.status==="stopped"?"#888":cat.color}`}}>
+                      {p.status==="stopped"?"Σταμάτησε":cat.label}
+                    </div>
+                  </div>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6}}>
+                    <span style={{fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20,background:"#00e5a022",color:"#00e5a0",border:"1px solid #00e5a0"}}>Ημέρα {fmtEur(p.rateDay)}/ώρα</span>
+                    {p.rateNight && <span style={{fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20,background:"#5b8cff22",color:"#5b8cff",border:"1px solid #5b8cff"}}>Βράδυ {fmtEur(p.rateNight)}</span>}
+                    {p.rateSun && <span style={{fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20,background:"#f5c51822",color:"#f5c518",border:"1px solid #f5c518"}}>Κυρ {fmtEur(p.rateSun)}</span>}
+                  </div>
+                  {pD.map((d,i)=><div key={i} style={S.cardSub}>👤 {d.name} · {d.shift} · {d.days}</div>)}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {tab==="partners" && (
+          <div style={S.view}>
+            <div style={{fontSize:20,fontWeight:800,marginBottom:16}}>Συνεργάτες <span style={{fontSize:12,fontWeight:700,background:"#1e2a4a",color:"#778",padding:"2px 8px",borderRadius:20}}>{PARTNERS.length}</span></div>
+            <div style={{fontSize:11,fontWeight:700,letterSpacing:2,color:"#445",textTransform:"uppercase",marginBottom:8}}>Ομάδα Μητούδη</div>
+            {PARTNERS.filter(p=>p.role.includes("Μητούδη")||p.name==="Μητούδης Δημήτρης").map(p=>(
+              <div key={p.id} style={S.card}>
+                <div style={{display:"flex",gap:12}}>
+                  <div style={{width:42,height:42,borderRadius:"50%",background:"#1a2540",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:"#f5c518",flexShrink:0}}>Μ</div>
+                  <div>
+                    <div style={S.cardName}>{p.name}</div>
+                    <div style={S.cardSub}>{p.role} · €{p.rate}/ώρα</div>
+                    {p.notes && <div style={S.cardSub}>{p.notes}</div>}
+                  </div>
+                </div>
+              </div>
+            ))}
+            <div style={{fontSize:11,fontWeight:700,letterSpacing:2,color:"#445",textTransform:"uppercase",marginBottom:8,marginTop:12}}>Λοιποί Συνεργάτες</div>
+            {PARTNERS.filter(p=>!p.role.includes("Μητούδη")&&p.name!=="Μητούδης Δημήτρης").map(p=>(
+              <div key={p.id} style={S.card}>
+                <div style={{display:"flex",gap:12}}>
+                  <div style={{width:42,height:42,borderRadius:"50%",background:"#1a2540",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,color:"#a78bfa",flexShrink:0}}>Ε</div>
+                  <div>
+                    <div style={S.cardName}>{p.name}</div>
+                    <div style={S.cardSub}>{p.role} · €{p.rate}/ώρα</div>
+                    {p.notes && <div style={S.cardSub}>{p.notes}</div>}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tab==="log" && (
+          <div style={S.view}>
+            <div style={{fontSize:20,fontWeight:800,marginBottom:16}}>Αρχείο Μεταβολών</div>
+            {log.map(l=>{
+              const c=l.type==="absence"?"#ff6b6b":l.type==="substitution"?"#f5c518":"#5b8cff";
+              return (
+                <div key={l.id} style={S.card}>
+                  <div style={{display:"flex",gap:10}}>
+                    <div style={{width:10,height:10,borderRadius:"50%",flexShrink:0,marginTop:4,background:c}}/>
+                    <div>
+                      <div style={{...S.badge,display:"inline-block",marginBottom:4,background:c+"22",color:c,border:`1px solid ${c}`}}>
+                        {l.type==="absence"?"Απουσία":l.type==="substitution"?"Αντικατάσταση":"Σύστημα"}
+                      </div>
+                      <div style={{fontSize:13,color:"#b0b8d0",lineHeight:1.4}}>{l.text}</div>
+                      <div style={{fontSize:11,color:"#445",marginTop:3}}>{l.ts}</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div style={S.bottomNav}>
+        {TABS.map(t=>(
+          <button key={t.id} style={{...S.navBtn,color:tab===t.id?"#00e5a0":"#556"}} onClick={()=>{setTab(t.id);setSearch("");setCatFilter("all");}}>
+            <span style={{fontSize:22}}>{t.emoji}</span>
+            <span style={{fontSize:9,marginTop:2,fontWeight:tab===t.id?700:400}}>{t.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {calcOpen && (
+        <div style={S.overlay}>
+          <div style={S.modal}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 16px 12px",borderBottom:"1px solid #1e2a4a"}}>
+              <span style={{fontWeight:800,fontSize:16,color:"#f5c518"}}>💰 Κοστολόγηση</span>
+              <button style={{background:"none",border:"none",color:"#556",cursor:"pointer",fontSize:20}} onClick={()=>setCalcOpen(false)}>✕</button>
+            </div>
+            <div style={{padding:16,overflowY:"auto"}}>
+              {[["Τύπος",[["employee","Υπάλληλος"],["partner","Εργολάβος"]],calcDT,setCalcDT,"#f5c518"],
+                ["Μηχανάκι",[["company","Εταιρικό"],["own","Ιδιόκτητο"]],calcMoto,setCalcMoto,"#5b8cff"]
+              ].map(([lbl,opts,val,setter,clr])=>(
+                <div key={lbl}>
+                  <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8,marginTop:14}}>{lbl}</div>
+                  <div style={{display:"flex",gap:8}}>
+                    {opts.map(([v,l])=>(
+                      <button key={v} style={{borderRadius:20,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:"none",background:val===v?clr:"#1a2540",color:val===v?"#0a0f1e":"#778"}} onClick={()=>setter(v)}>{l}</button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {calcDT==="employee" && (
+                <div>
+                  <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8,marginTop:14}}>Τύπος Ώρας</div>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                    {[["normal","Κανονική"],["overtime","Υπερωρία"],["night","Νυχτερινή"],["sunday","Κυρ/Αργία"]].map(([v,l])=>(
+                      <button key={v} style={{borderRadius:20,padding:"8px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:"none",background:calcType===v?"#00e5a0":"#1a2540",color:calcType===v?"#0a0f1e":"#778"}} onClick={()=>setCalcType(v)}>{l}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8,marginTop:14}}>Ώρες Εργασίας</div>
+              <input style={{background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"12px 16px",fontSize:20,fontWeight:700,width:"100%",color:"#e8eaf6",outline:"none",fontFamily:"inherit"}} type="number" placeholder="π.χ. 8" value={calcH} onChange={e=>setCalcH(e.target.value)}/>
+              {calcResult() && (
+                <div style={{background:"#0a0f1e",border:"1px solid #00e5a0",borderRadius:12,padding:20,textAlign:"center",marginTop:20}}>
+                  <div style={{fontSize:13,color:"#778",marginBottom:4}}>{calcResult().h} ώρες × €{calcResult().rate}/ώρα</div>
+                  <div style={{fontSize:36,fontWeight:900,color:"#00e5a0"}}>€{calcResult().total}</div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {chatOpen && (
+        <div style={S.chatPanel}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 16px 12px",borderBottom:"1px solid #1e2a4a"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,fontSize:15,fontWeight:700}}>
+              <span style={{background:"linear-gradient(135deg,#00e5a0,#5b8cff)",color:"#0a0f1e",fontSize:10,fontWeight:900,padding:"2px 7px",borderRadius:6}}>AI</span>
+              ALLYRA Γραμματέας
+            </div>
+            <button style={{background:"none",border:"none",color:"#556",cursor:"pointer",fontSize:20}} onClick={()=>setChatOpen(false)}>✕</button>
+          </div>
+          <div style={S.msgs}>
+            {messages.map((m,i)=>(
+              <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}>
+                <div style={{...S.bubble,background:m.role==="user"?"#00e5a0":"#1a2540",color:m.role==="user"?"#0a0f1e":"#e8eaf6",borderRadius:m.role==="user"?"18px 18px 4px 18px":"18px 18px 18px 4px"}}>
+                  {m.text}
+                </div>
+              </div>
+            ))}
+            {thinking && <div style={{display:"flex"}}><div style={{...S.bubble,background:"#1a2540",color:"#556"}}>Σκέφτομαι...</div></div>}
+            <div ref={msgEnd}/>
+          </div>
+          <div style={S.inputRow}>
+            <input style={S.textInput} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendMsg(input,messages)} placeholder="Γράψε εντολή στα ελληνικά..."/>
+            <button style={{width:42,height:42,borderRadius:"50%",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"#e8eaf6",flexShrink:0,background:listening?"#ff6b6b":"#1a2540",border:`1px solid ${listening?"#ff6b6b":"#2a3560"}`,fontSize:18}} onClick={listening?()=>{recRef.current?.stop();setListening(false);}:startListen}>
+              {listening?"🔴":"🎙"}
+            </button>
+            <button style={{width:42,height:42,borderRadius:"50%",background:"#00e5a0",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"#0a0f1e",flexShrink:0,fontSize:18}} onClick={()=>sendMsg(input,messages)}>➤</button>
+          </div>
+          {listening && <div style={{textAlign:"center",fontSize:12,color:"#ff6b6b",padding:"6px",background:"#ff6b6b11",fontWeight:600}}>🎙 Ακούω... μίλα στα ελληνικά</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
