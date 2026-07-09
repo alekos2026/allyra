@@ -12,7 +12,7 @@ export default async function handler(req, res) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': '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',
+        'x-api-key': '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',
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1000, system, messages })
