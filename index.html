@@ -247,7 +247,7 @@ function App() {
       const pD = ASSIGNMENTS.filter(a=>a.projectId===p.id).map(a=>{ const dr=drivers.find(d=>d.id===a.driverId); return dr?dr.name.split(" ")[0]:"";}).filter(Boolean).join(",");
       return `- ${p.name}|${p.address||"—"}|€${p.rateDay}/ώρα|Οδηγοί:${pD||"—"}`;
     }).join("\n");
-    return `Είσαι η ALLYRA, ψηφιακή AI γραμματέας courier εταιρείας, μόνο ελληνικά. Χρήστης: Alex (διευθυντής).\nΟΔΗΓΟΙ(${drivers.length}):\n${dl}\nPROJECTS:\n${pl}\nRATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κυρ€9.30. Ιδιόκτ+€1.20. Εργολάβος:€9.50(δικό τους)/€8.50(δικό μας).\nΑπάντα σύντομα(max 4 προτάσεις). Αν ζητά αλλαγή, αναγνώρισέ την. Αν ζητά κοστολόγηση, υπολόγισε.`;
+   return `Είσαι η ALLYRA, ψηφιακή AI γραμματέας courier εταιρείας, μόνο ελληνικά. Χρήστης: Alex (διευθυντής).\nΟΔΗΓΟΙ(${drivers.length}):\n${dl}\nPROJECTS:\n${pl}\nRATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κυρ€9.30. Ιδιόκτ+€1.20. Εργολάβος:€9.50(δικό τους)/€8.50(δικό μας).\nΑπάντα σύντομα(max 4 προτάσεις).\nΑΝ Ο ΧΡΗΣΤΗΣ ΖΗΤΑΕΙ ΑΛΛΑΓΗ ΣΕ ΟΔΗΓΟ, ΠΡΕΠΕΙ να συμπεριλάβεις ΣΤΟ ΤΕΛΟΣ της απάντησής σου μία γραμμή ΑΚΡΙΒΩΣ σε αυτή τη μορφή:\n[ACTION:{"type":"update_driver","id":<id>,"field":"<name|phone|status>","value":"<τιμή>"}]\nΑν δεν ζητείται αλλαγή, ΜΗΝ βάζεις ACTION γραμμή.`;
   }, [drivers]);
 
   const sendMsg = useCallback(async (txt, currentMsgs) => {
