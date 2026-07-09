@@ -257,7 +257,19 @@ function App() {
     setInput(""); setThinking(true);
     try {
       const r = await callAllyra(buildPrompt(), currentMsgs, txt);
-      setMessages(p=>[...p, {role:"assistant", text:r}]);
+      const actionMatch = r.match(/\[ACTION:(\{.*?\})\]/);
+      let cleanText = r;
+      if (actionMatch) {
+        cleanText = r.replace(actionMatch[0], "").trim();
+        try {
+          const action = JSON.parse(actionMatch[1]);
+          if (action.type === "update_driver") {
+            setDrivers(prev => prev.map(d => d.id === action.id ? {...d, [action.field]: action.value} : d));
+            notify("Ενημέρωση οδηγού καταχωρήθηκε ✓","success");
+          }
+        } catch(err) {}
+      }
+      setMessages(p=>[...p, {role:"assistant", text:cleanText}]);
       const lo=txt.toLowerCase();
       if (lo.includes("απουσί")||lo.includes("απών")) { addLog(txt,"absence"); notify("Απουσία καταχωρήθηκε ✓","success"); }
       else if (lo.includes("αντικατάστα")) { addLog(txt,"substitution"); notify("Αντικατάσταση καταχωρήθηκε ✓","success"); }
@@ -265,8 +277,9 @@ function App() {
     } catch(e) { setMessages(p=>[...p,{role:"assistant",text:"Σφάλμα σύνδεσης."}]); }
     finally { setThinking(false); }
   }, [buildPrompt]);
+  
 
-  const startListen = () => {
+ const startListen = () => {
     const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
     if (!SR) { notify("Χρησιμοποίησε Chrome για φωνή","warning"); return; }
     const r=new SR(); r.lang="el-GR"; r.continuous=false; r.interimResults=false;
