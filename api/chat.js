@@ -12,7 +12,7 @@ export default async function handler(req, res) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': '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',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1000, system, messages })
