@@ -265,6 +265,10 @@ useEffect(() => {
   };
 
   const buildPrompt = useCallback(() => {
+    const today = new Date();
+    const todayStr = today.toLocaleDateString("el-GR", { weekday:"long", year:"numeric", month:"long", day:"numeric" });
+    const tomorrowStr = new Date(today.getTime()+86400000).toLocaleDateString("el-GR");
+    const dayAfterStr = new Date(today.getTime()+2*86400000).toLocaleDateString("el-GR");
     const dl = drivers.map(d => {
       const asgn = ASSIGNMENTS.filter(a=>a.driverId===d.id);
       const pNames = asgn.map(a=>{ const pr=PROJECTS.find(p=>p.id===a.projectId); return pr?`${pr.name}(${a.shift})`:""}).filter(Boolean).join(", ");
@@ -274,7 +278,7 @@ useEffect(() => {
       const pD = ASSIGNMENTS.filter(a=>a.projectId===p.id).map(a=>{ const dr=drivers.find(d=>d.id===a.driverId); return dr?dr.name.split(" ")[0]:"";}).filter(Boolean).join(",");
       return `- ${p.name}|${p.address||"—"}|€${p.rateDay}/ώρα|Οδηγοί:${pD||"—"}`;
     }).join("\n");
-   return `Είσαι η ALLYRA, ψηφιακή AI γραμματέας courier εταιρείας, μόνο ελληνικά. Χρήστης: Alex (διευθυντής).\nΟΔΗΓΟΙ(${drivers.length}):\n${dl}\nPROJECTS:\n${pl}\nRATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κυρ€9.30. Ιδιόκτ+€1.20. Εργολάβος:€9.50(δικό τους)/€8.50(δικό μας).\nΑπάντα σύντομα(max 4 προτάσεις).\nΑΝ Ο ΧΡΗΣΤΗΣ ΖΗΤΑΕΙ ΑΛΛΑΓΗ ΣΕ ΟΔΗΓΟ (όνομα, τηλέφωνο, ή απουσία/status), ΠΡΕΠΕΙ ΠΑΝΤΑ να συμπεριλάβεις ΣΤΟ ΤΕΛΟΣ της απάντησής σου μία γραμμή ΑΚΡΙΒΩΣ σε αυτή τη μορφή, ΧΩΡΙΣ ΝΑ ΡΩΤΑΣ ΕΠΙΒΕΒΑΙΩΣΗ ΠΡΩΤΑ:\n[ACTION:{"type":"update_driver","id":<id>,"field":"<name|phone|status>","value":"<τιμή>"}]\nΠαράδειγμα 1 (όνομα): "άλλαξε Πατεράκης σε Παταράκης" (id 4) → [ACTION:{"type":"update_driver","id":4,"field":"name","value":"Παταράκης Παύλος"}]\nΠαράδειγμα 2 (απουσία): "ο Κόντος Άγγελος είναι απών σήμερα" (id 7) → πρέπει να γράψεις [ACTION:{"type":"update_driver","id":7,"field":"status","value":"absent"}] ΣΤΟ ΤΕΛΟΣ, ΑΚΟΜΑ ΚΙ ΑΝ ρωτήσεις για αντικαταστάτη.\nΑν ζητηθεί επιστροφή σε ενεργό: value:"active".\nΑν δεν ζητείται αλλαγή, ΜΗΝ βάζεις ACTION γραμμή.`;
+  return `Είσαι η ALLYRA, ψηφιακή AI γραμματέας courier εταιρείας, μόνο ελληνικά. Χρήστης: Alex (διευθυντής).\nΣΗΜΕΡΑ είναι: ${todayStr} (${today.toLocaleDateString("el-GR")}). ΑΥΡΙΟ είναι: ${tomorrowStr}. ΜΕΘΑΥΡΙΟ είναι: ${dayAfterStr}.\nΟΔΗΓΟΙ(${drivers.length}):\n${dl}\nPROJECTS:\n${pl}\nRATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κυρ€9.30. Ιδιόκτ+€1.20. Εργολάβος:€9.50(δικό τους)/€8.50(δικό μας).\nΑπάντα σύντομα(max 4 προτάσεις).\nΑΝ Ο ΧΡΗΣΤΗΣ ΑΝΑΦΕΡΕΙ "σήμερα","αύριο" ή "μεθαύριο", ΧΡΗΣΙΜΟΠΟΙΗΣΕ τις παραπάνω πραγματικές ημερομηνίες όταν περιγράφεις την αλλαγή, ώστε η καταγραφή να είναι σαφής (π.χ. αντί για "αύριο" γράψε την ημερομηνία).\nΑΝ Ο ΧΡΗΣΤΗΣ ΖΗΤΑΕΙ ΑΛΛΑΓΗ ΣΕ ΟΔΗΓΟ (όνομα, τηλέφωνο, ή απουσία/status), ΠΡΕΠΕΙ ΠΑΝΤΑ να συμπεριλάβεις ΣΤΟ ΤΕΛΟΣ της απάντησής σου μία γραμμή ΑΚΡΙΒΩΣ σε αυτή τη μορφή, ΧΩΡΙΣ ΝΑ ΡΩΤΑΣ ΕΠΙΒΕΒΑΙΩΣΗ ΠΡΩΤΑ:\n[ACTION:{"type":"update_driver","id":<id>,"field":"<name|phone|status>","value":"<τιμή>"}]\nΠαράδειγμα 1 (όνομα): "άλλαξε Πατεράκης σε Παταράκης" (id 4) → [ACTION:{"type":"update_driver","id":4,"field":"name","value":"Παταράκης Παύλος"}]\nΠαράδειγμα 2 (απουσία): "ο Κόντος Άγγελος είναι απών σήμερα" (id 7) → πρέπει να γράψεις [ACTION:{"type":"update_driver","id":7,"field":"status","value":"absent"}] ΣΤΟ ΤΕΛΟΣ, ΑΚΟΜΑ ΚΙ ΑΝ ρωτήσεις για αντικαταστάτη.\nΑν ζητηθεί επιστροφή σε ενεργό: value:"active".\nΑν δεν ζητείται αλλαγή, ΜΗΝ βάζεις ACTION γραμμή.`;
 
   
   }, [drivers]); const sendMsg = useCallback(async (txt, currentMsgs) => {
