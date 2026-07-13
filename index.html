@@ -210,7 +210,15 @@ const fmtEur = n => `€${Number(n).toFixed(2)}`;
 
 function App() {
   const [tab, setTab] = useState("home");
-  const [drivers, setDrivers] = useState(() => { const d=loadData(); return d?.drivers||DRIVERS; });
+  const [drivers, setDrivers] = useState(DRIVERS);
+
+useEffect(() => {
+  async function fetchDrivers() {
+    const { data, error } = await supabase.from('drivers').select('*').order('id');
+    if (!error && data && data.length > 0) setDrivers(data);
+  }
+  fetchDrivers();
+}, []);
   const [log, setLog] = useState(() => { const d=loadData(); return d?.log||[
     { id:1, ts:"2026-07-01 09:00", type:"system", text:"ALLYRA v4 — 60 οδηγοί, 27 projects, 14 συνεργάτες." },
     { id:2, ts:"2026-06-30 17:00", type:"project", text:"Goodys Π.Φάληρο — Διακοπή project." },
