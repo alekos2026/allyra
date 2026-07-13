@@ -278,6 +278,8 @@ useEffect(() => {
           if (action.type === "update_driver") {
             setDrivers(prev => prev.map(d => d.id === action.id ? {...d, [action.field]: action.value} : d));
             notify("Ενημέρωση οδηγού καταχωρήθηκε ✓","success");
+
+            supabase.from('drivers').update({ [action.field]: action.value }).eq('id', action.id).then(() => {});
           }
         } catch(err) {}
       }
