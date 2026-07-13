@@ -219,10 +219,20 @@ useEffect(() => {
   }
   fetchDrivers();
 }, []);
-  const [log, setLog] = useState(() => { const d=loadData(); return d?.log||[
+  const [log, setLog] = useState([
     { id:1, ts:"2026-07-01 09:00", type:"system", text:"ALLYRA v4 — 60 οδηγοί, 27 projects, 14 συνεργάτες." },
     { id:2, ts:"2026-06-30 17:00", type:"project", text:"Goodys Π.Φάληρο — Διακοπή project." },
-  ]; });
+  ]);
+
+  useEffect(() => {
+    async function fetchLog() {
+      const { data, error } = await supabase.from('log').select('*').order('id', { ascending:false });
+      if (!error && data && data.length > 0) {
+        setLog(data.map(l => ({ id:l.id, ts:l.ts, type:l.type, text:l.text })));
+      }
+    }
+    fetchLog();
+  }, []);
   const [chatOpen, setChatOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("all");
@@ -247,7 +257,12 @@ useEffect(() => {
   useEffect(() => { if(msgEnd.current) msgEnd.current.scrollIntoView({behavior:"smooth"}); }, [messages]);
 
   const notify = (text, type="info") => { setNotif({text,type}); setTimeout(()=>setNotif(null),4000); };
-  const addLog = (text, type) => { const ts=new Date().toLocaleString("el-GR"); setLog(p=>[{id:Date.now(),ts,type,text},...p]); };
+  const addLog = (text, type) => {
+    const ts=new Date().toLocaleString("el-GR");
+    const newEntry = {id:Date.now(),ts,type,text};
+    setLog(p=>[newEntry,...p]);
+    supabase.from('log').insert({ ts, type, text }).then(() => {});
+  };
 
   const buildPrompt = useCallback(() => {
     const dl = drivers.map(d => {
