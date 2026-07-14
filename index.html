@@ -21,11 +21,12 @@
 <div id="root"></div>
 <script type="text/babel">
 const { useState, useRef, useCallback, useEffect } = React;
+
 const SUPABASE_URL = 'https://svogmhnxttktdwcfcjex.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_TQeIZHQQQQO0DOEGzSg1Qw_fUUL9M2v';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-  const STORAGE_KEY = 'allyra_data_v1';
+const STORAGE_KEY = 'allyra_data_v1';
 function saveData(data) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch(e) {} }
 function loadData() { try { const d=localStorage.getItem(STORAGE_KEY); return d?JSON.parse(d):null; } catch(e) { return null; } }
 
@@ -67,7 +68,7 @@ const PROJECTS = [
   { id:27, name:"Eurobank",              cat:"trapeza",     client:"Eurobank",     address:"Λεωφ.Ηρακλείτου 332",                      rateDay:12.00, rateNight:null,  rateSun:null,  status:"active" },
 ];
 
-const ASSIGNMENTS = [
+const ASSIGNMENTS_SEED = [
   { driverId:1,  projectId:1,  shift:"09:00-17:00", days:"Δευ-Παρ" },
   { driverId:2,  projectId:1,  shift:"08:30-16:30", days:"Δευ-Παρ" },
   { driverId:3,  projectId:1,  shift:"09:00-17:00", days:"Δευ-Παρ" },
@@ -192,7 +193,6 @@ const RATES = {
 };
 
 async function callAllyra(sys, history, newMsg) {
-  
   const messages = [
     ...history.slice(-10).map(m => ({ role: m.role==="user"?"user":"assistant", content: m.text })),
     { role:"user", content:newMsg }
@@ -210,20 +210,34 @@ const fmtEur = n => `€${Number(n).toFixed(2)}`;
 
 function App() {
   const [tab, setTab] = useState("home");
-  const [drivers, setDrivers] = useState(DRIVERS);
 
-useEffect(() => {
-  async function fetchDrivers() {
-    const { data, error } = await supabase.from('drivers').select('*').order('id');
-    if (!error && data && data.length > 0) setDrivers(data);
-  }
-  fetchDrivers();
-}, []);
+  // ---- DRIVERS (Supabase-backed) ----
+  const [drivers, setDrivers] = useState(DRIVERS);
+  useEffect(() => {
+    async function fetchDrivers() {
+      const { data, error } = await supabase.from('drivers').select('*').order('id');
+      if (!error && data && data.length > 0) setDrivers(data);
+    }
+    fetchDrivers();
+  }, []);
+
+  // ---- ASSIGNMENTS (Supabase-backed) ----
+  const [assignments, setAssignments] = useState(ASSIGNMENTS_SEED);
+  useEffect(() => {
+    async function fetchAssignments() {
+      const { data, error } = await supabase.from('assignments')
+        .select('id, driverId:driverid, projectId:projectid, shift, days')
+        .order('id');
+      if (!error && data && data.length > 0) setAssignments(data);
+    }
+    fetchAssignments();
+  }, []);
+
+  // ---- LOG (Supabase-backed) ----
   const [log, setLog] = useState([
     { id:1, ts:"2026-07-01 09:00", type:"system", text:"ALLYRA v4 — 60 οδηγοί, 27 projects, 14 συνεργάτες." },
     { id:2, ts:"2026-06-30 17:00", type:"project", text:"Goodys Π.Φάληρο — Διακοπή project." },
   ]);
-
   useEffect(() => {
     async function fetchLog() {
       const { data, error } = await supabase.from('log').select('*').order('id', { ascending:false });
@@ -233,12 +247,25 @@ useEffect(() => {
     }
     fetchLog();
   }, []);
+
   const [chatOpen, setChatOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("all");
+
+  // ---- CHAT MESSAGES (Supabase-backed) ----
   const [messages, setMessages] = useState([
     {role:"assistant", text:"Γεια σου Alex! Έχω φορτώσει 60 οδηγούς, 27 projects σε 5 κατηγορίες και 14 συνεργάτες. Πώς μπορώ να σε βοηθήσω;"}
   ]);
+  useEffect(() => {
+    async function fetchMessages() {
+      const { data, error } = await supabase.from('chat_messages').select('*').order('id');
+      if (!error && data && data.length > 0) {
+        setMessages(data.map(m => ({ role:m.role, text:m.text })));
+      }
+    }
+    fetchMessages();
+  }, []);
+
   const [input, setInput] = useState("");
   const [listening, setListening] = useState(false);
   const [thinking, setThinking] = useState(false);
@@ -251,15 +278,13 @@ useEffect(() => {
   const recRef = useRef(null);
   const msgEnd = useRef(null);
 
-  // AUTO-SAVE σε κάθε αλλαγή
-  useEffect(() => { saveData({ drivers, log }); }, [drivers, log]);
-
   useEffect(() => { if(msgEnd.current) msgEnd.current.scrollIntoView({behavior:"smooth"}); }, [messages]);
 
   const notify = (text, type="info") => { setNotif({text,type}); setTimeout(()=>setNotif(null),4000); };
+
   const addLog = (text, type) => {
-    const ts=new Date().toLocaleString("el-GR");
-    const newEntry = {id:Date.now(),ts,type,text};
+    const ts = new Date().toLocaleString("el-GR");
+    const newEntry = {id:Date.now(), ts, type, text};
     setLog(p=>[newEntry,...p]);
     supabase.from('log').insert({ ts, type, text }).then(() => {});
   };
@@ -269,19 +294,39 @@ useEffect(() => {
     const todayStr = today.toLocaleDateString("el-GR", { weekday:"long", year:"numeric", month:"long", day:"numeric" });
     const tomorrowStr = new Date(today.getTime()+86400000).toLocaleDateString("el-GR");
     const dayAfterStr = new Date(today.getTime()+2*86400000).toLocaleDateString("el-GR");
-    const dl = drivers.map(d => {
-      const asgn = ASSIGNMENTS.filter(a=>a.driverId===d.id);
-      const pNames = asgn.map(a=>{ const pr=PROJECTS.find(p=>p.id===a.projectId); return pr?`${pr.name}(${a.shift})`:""}).filter(Boolean).join(", ");
-      return `- ${d.name}|${d.status==="active"?"✓":"✗"}|${pNames||"Χωρίς project"}|${d.moto}(${d.motoType==="own"?"ιδ":"εταιρ"})|τηλ:${d.phone||"—"}|${d.area||"—"}`;
-    }).join("\n");
-    const pl = PROJECTS.filter(p=>p.status==="active").map(p=>{
-      const pD = ASSIGNMENTS.filter(a=>a.projectId===p.id).map(a=>{ const dr=drivers.find(d=>d.id===a.driverId); return dr?dr.name.split(" ")[0]:"";}).filter(Boolean).join(",");
-      return `- ${p.name}|${p.address||"—"}|€${p.rateDay}/ώρα|Οδηγοί:${pD||"—"}`;
-    }).join("\n");
-  return `Είσαι η ALLYRA, ψηφιακή AI γραμματέας courier εταιρείας, μόνο ελληνικά. Χρήστης: Alex (διευθυντής).\nΣΗΜΕΡΑ είναι: ${todayStr} (${today.toLocaleDateString("el-GR")}). ΑΥΡΙΟ είναι: ${tomorrowStr}. ΜΕΘΑΥΡΙΟ είναι: ${dayAfterStr}.\nΟΔΗΓΟΙ(${drivers.length}):\n${dl}\nPROJECTS:\n${pl}\nRATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κυρ€9.30. Ιδιόκτ+€1.20. Εργολάβος:€9.50(δικό τους)/€8.50(δικό μας).\nΑπάντα σύντομα(max 4 προτάσεις).\nΑΝ Ο ΧΡΗΣΤΗΣ ΑΝΑΦΕΡΕΙ "σήμερα","αύριο" ή "μεθαύριο", ΧΡΗΣΙΜΟΠΟΙΗΣΕ τις παραπάνω πραγματικές ημερομηνίες όταν περιγράφεις την αλλαγή, ώστε η καταγραφή να είναι σαφής (π.χ. αντί για "αύριο" γράψε την ημερομηνία).\nΑΝ Ο ΧΡΗΣΤΗΣ ΖΗΤΑΕΙ ΑΛΛΑΓΗ ΣΕ ΟΔΗΓΟ (όνομα, τηλέφωνο, ή απουσία/status), ΠΡΕΠΕΙ ΠΑΝΤΑ να συμπεριλάβεις ΣΤΟ ΤΕΛΟΣ της απάντησής σου μία γραμμή ΑΚΡΙΒΩΣ σε αυτή τη μορφή, ΧΩΡΙΣ ΝΑ ΡΩΤΑΣ ΕΠΙΒΕΒΑΙΩΣΗ ΠΡΩΤΑ:\n[ACTION:{"type":"update_driver","id":<id>,"field":"<name|phone|status>","value":"<τιμή>"}]\nΠαράδειγμα 1 (όνομα): "άλλαξε Πατεράκης σε Παταράκης" (id 4) → [ACTION:{"type":"update_driver","id":4,"field":"name","value":"Παταράκης Παύλος"}]\nΠαράδειγμα 2 (απουσία): "ο Κόντος Άγγελος είναι απών σήμερα" (id 7) → πρέπει να γράψεις [ACTION:{"type":"update_driver","id":7,"field":"status","value":"absent"}] ΣΤΟ ΤΕΛΟΣ, ΑΚΟΜΑ ΚΙ ΑΝ ρωτήσεις για αντικαταστάτη.\nΑν ζητηθεί επιστροφή σε ενεργό: value:"active".\nΑν δεν ζητείται αλλαγή, ΜΗΝ βάζεις ACTION γραμμή.`;
 
-  
-  }, [drivers]); const sendMsg = useCallback(async (txt, currentMsgs) => {
+    const dl = drivers.map(d => {
+      const asgn = assignments.filter(a=>a.driverId===d.id);
+      const pNames = asgn.map(a=>{ const pr=PROJECTS.find(p=>p.id===a.projectId); return pr?`${pr.name}(${a.shift})`:""}).filter(Boolean).join(", ");
+      return `- ${d.name}|id:${d.id}|${d.status==="active"?"✓":"✗"}|${pNames||"Χωρίς project"}|${d.moto}(${d.motoType==="own"?"ιδ":"εταιρ"})|τηλ:${d.phone||"—"}|${d.area||"—"}`;
+    }).join("\n");
+
+    const pl = PROJECTS.filter(p=>p.status==="active").map(p=>{
+      const pD = assignments.filter(a=>a.projectId===p.id).map(a=>{ const dr=drivers.find(d=>d.id===a.driverId); return dr?dr.name.split(" ")[0]:"";}).filter(Boolean).join(",");
+      return `- ${p.name}|id:${p.id}|${p.address||"—"}|€${p.rateDay}/ώρα|Οδηγοί:${pD||"—"}`;
+    }).join("\n");
+
+    return `Είσαι η ALLYRA, ψηφιακή AI γραμματέας courier εταιρείας, μόνο ελληνικά. Χρήστης: Alex (διευθυντής).
+ΣΗΜΕΡΑ είναι: ${todayStr} (${today.toLocaleDateString("el-GR")}). ΑΥΡΙΟ είναι: ${tomorrowStr}. ΜΕΘΑΥΡΙΟ είναι: ${dayAfterStr}.
+ΟΔΗΓΟΙ(${drivers.length}):
+${dl}
+PROJECTS(ενεργά):
+${pl}
+RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κυρ€9.30. Ιδιόκτ+€1.20. Εργολάβος:€9.50(δικό τους)/€8.50(δικό μας).
+Απάντα σύντομα (max 4 προτάσεις).
+ΑΝ Ο ΧΡΗΣΤΗΣ ΑΝΑΦΕΡΕΙ "σήμερα","αύριο" ή "μεθαύριο", ΧΡΗΣΙΜΟΠΟΙΗΣΕ τις παραπάνω πραγματικές ημερομηνίες όταν περιγράφεις την αλλαγή, ώστε η καταγραφή να είναι σαφής (π.χ. αντί για "αύριο" γράψε την ημερομηνία).
+ΑΝ Ο ΧΡΗΣΤΗΣ ΖΗΤΑΕΙ ΑΛΛΑΓΗ ΣΕ ΟΔΗΓΟ (όνομα, τηλέφωνο, ή απουσία/status), ΠΡΕΠΕΙ ΠΑΝΤΑ να συμπεριλάβεις ΣΤΟ ΤΕΛΟΣ της απάντησής σου μία γραμμή ΑΚΡΙΒΩΣ σε αυτή τη μορφή, ΧΩΡΙΣ ΝΑ ΡΩΤΑΣ ΕΠΙΒΕΒΑΙΩΣΗ ΠΡΩΤΑ:
+[ACTION:{"type":"update_driver","id":<id>,"field":"<name|phone|status>","value":"<τιμή>"}]
+Παράδειγμα (όνομα): "άλλαξε Πατεράκης σε Παταράκης" (id 4) → [ACTION:{"type":"update_driver","id":4,"field":"name","value":"Παταράκης Παύλος"}]
+Παράδειγμα (απουσία): "ο Κόντος Άγγελος είναι απών σήμερα" (id 7) → [ACTION:{"type":"update_driver","id":7,"field":"status","value":"absent"}] ΣΤΟ ΤΕΛΟΣ, ΑΚΟΜΑ ΚΙ ΑΝ ρωτήσεις για αντικαταστάτη. Αν ζητηθεί επιστροφή σε ενεργό: value:"active".
+ΑΝ Ο ΧΡΗΣΤΗΣ ΖΗΤΑΕΙ ΜΕΤΑΦΟΡΑ/ΑΝΑΘΕΣΗ ΟΔΗΓΟΥ ΣΕ ΝΕΟ PROJECT (π.χ. "βάλε τον Χ στο Eltrekka Χαλάνδρι", "μετέφερε τον Χ από το Α στο Β"), ΠΡΕΠΕΙ ΠΑΝΤΑ να συμπεριλάβεις ΣΤΟ ΤΕΛΟΣ μία γραμμή ΑΚΡΙΒΩΣ σε αυτή τη μορφή:
+[ACTION:{"type":"assign_driver","driverId":<id_οδηγού>,"projectId":<id_project>,"shift":"<ωράριο ή κενό>","days":"<ημέρες ή κενό>","removeProjectId":<id_παλιού_project_ή_null>}]
+Αν ο χρήστης δεν ανέφερε ωράριο/ημέρες, βάλε "shift":"" και "days":"". Αν είναι απλή προσθήκη χωρίς μεταφορά από άλλο project, βάλε "removeProjectId":null.
+Παράδειγμα: "μετέφερε τον Κόντο Άγγελο από ELTREKKA Αιγάλεω στο ELTREKKA Χαλάνδρι" (driverId 7, παλιό project id 3, νέο project id 4) → [ACTION:{"type":"assign_driver","driverId":7,"projectId":4,"shift":"","days":"","removeProjectId":3}]
+Αν δεν ζητείται καμία αλλαγή, ΜΗΝ βάζεις καμία ACTION γραμμή.`;
+  }, [drivers, assignments]);
+
+  const sendMsg = useCallback(async (txt, currentMsgs) => {
     if (!txt.trim()) return;
     const updated = [...currentMsgs, {role:"user", text:txt}];
     setMessages(updated);
@@ -296,23 +341,37 @@ useEffect(() => {
           const action = JSON.parse(actionMatch[1]);
           if (action.type === "update_driver") {
             setDrivers(prev => prev.map(d => d.id === action.id ? {...d, [action.field]: action.value} : d));
-            notify("Ενημέρωση οδηγού καταχωρήθηκε ✓","success");
-
             supabase.from('drivers').update({ [action.field]: action.value }).eq('id', action.id).then(() => {});
+            notify("Ενημέρωση οδηγού καταχωρήθηκε ✓","success");
+          }
+          if (action.type === "assign_driver") {
+            if (action.removeProjectId) {
+              setAssignments(prev => prev.filter(a => !(a.driverId===action.driverId && a.projectId===action.removeProjectId)));
+              supabase.from('assignments').delete().eq('driverid', action.driverId).eq('projectid', action.removeProjectId).then(() => {});
+            }
+            const newAsg = { driverId:action.driverId, projectId:action.projectId, shift:action.shift||"", days:action.days||"" };
+            setAssignments(prev => [...prev, newAsg]);
+            supabase.from('assignments').insert({ driverid:action.driverId, projectid:action.projectId, shift:action.shift||"", days:action.days||"" }).then(() => {});
+            notify("Ανάθεση οδηγού καταχωρήθηκε ✓","success");
           }
         } catch(err) {}
       }
       setMessages(p=>[...p, {role:"assistant", text:cleanText}]);
+      supabase.from('chat_messages').insert([
+        { role:"user", text:txt },
+        { role:"assistant", text:cleanText }
+      ]).then(() => {});
       const lo=txt.toLowerCase();
       if (lo.includes("απουσί")||lo.includes("απών")) { addLog(txt,"absence"); notify("Απουσία καταχωρήθηκε ✓","success"); }
+      else if (lo.includes("άδεια")||lo.includes("αδεια")) { addLog(txt,"leave"); notify("Άδεια καταχωρήθηκε ✓","success"); }
       else if (lo.includes("αντικατάστα")) { addLog(txt,"substitution"); notify("Αντικατάσταση καταχωρήθηκε ✓","success"); }
+      else if (lo.includes("μεταφ")||lo.includes("ανάθεσ")||lo.includes("αναθεσ")) { addLog(txt,"assignment"); notify("Μεταφορά καταχωρήθηκε ✓","success"); }
       else if (lo.includes("project")||lo.includes("έργο")) addLog(txt,"project");
     } catch(e) { setMessages(p=>[...p,{role:"assistant",text:"Σφάλμα σύνδεσης."}]); }
     finally { setThinking(false); }
   }, [buildPrompt]);
-  
 
- const startListen = () => {
+  const startListen = () => {
     const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
     if (!SR) { notify("Χρησιμοποίησε Chrome για φωνή","warning"); return; }
     const r=new SR(); r.lang="el-GR"; r.continuous=false; r.interimResults=false;
@@ -330,7 +389,7 @@ useEffect(() => {
 
   const activeD=drivers.filter(d=>d.status==="active").length;
   const absentD=drivers.filter(d=>d.status==="absent").length;
-  const assignedD=[...new Set(ASSIGNMENTS.map(a=>a.driverId))].length;
+  const assignedD=[...new Set(assignments.map(a=>a.driverId))].length;
   const activeP=PROJECTS.filter(p=>p.status==="active").length;
 
   const filtD=drivers.filter(d=>
@@ -395,7 +454,7 @@ useEffect(() => {
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
               <div>
                 <div style={{fontSize:22,fontWeight:700}}>Καλημέρα, Alex</div>
-                <div style={{fontSize:12,color:"#556",marginTop:2}}>Πέμπτη, 2 Ιουλίου 2026</div>
+                <div style={{fontSize:12,color:"#556",marginTop:2}}>{new Date().toLocaleDateString("el-GR",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}</div>
               </div>
               <div style={{width:44,height:44,borderRadius:"50%",background:"linear-gradient(135deg,#00e5a0,#5b8cff)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,fontWeight:900,color:"#0a0f1e"}}>A</div>
             </div>
@@ -424,9 +483,9 @@ useEffect(() => {
               );
             })}
             <div style={{fontSize:11,fontWeight:700,letterSpacing:2,color:"#445",textTransform:"uppercase",marginBottom:10,marginTop:16}}>Πρόσφατες Μεταβολές</div>
-            {log.slice(0,3).map(l=>(
+            {log.slice(0,5).map(l=>(
               <div key={l.id} style={{display:"flex",gap:10,alignItems:"flex-start",background:"#0d1428",border:"1px solid #1e2a4a",borderRadius:10,padding:"10px 12px",marginBottom:8}}>
-                <div style={{width:8,height:8,borderRadius:"50%",flexShrink:0,marginTop:5,background:l.type==="absence"?"#ff6b6b":l.type==="substitution"?"#f5c518":"#5b8cff"}}/>
+                <div style={{width:8,height:8,borderRadius:"50%",flexShrink:0,marginTop:5,background:l.type==="absence"?"#ff6b6b":l.type==="substitution"?"#f5c518":l.type==="assignment"?"#a78bfa":l.type==="leave"?"#00e5a0":"#5b8cff"}}/>
                 <div>
                   <div style={{fontSize:13,color:"#b0b8d0",lineHeight:1.4}}>{l.text}</div>
                   <div style={{fontSize:11,color:"#445",marginTop:3}}>{l.ts}</div>
@@ -444,7 +503,7 @@ useEffect(() => {
               <input style={S.searchInput} placeholder="Όνομα, περιοχή, πινακίδα..." value={search} onChange={e=>setSearch(e.target.value)}/>
             </div>
             {filtD.map(d=>{
-              const asgn=ASSIGNMENTS.filter(a=>a.driverId===d.id);
+              const asgn=assignments.filter(a=>a.driverId===d.id);
               const pNames=asgn.map(a=>{ const pr=PROJECTS.find(p=>p.id===a.projectId); return pr?pr.name:"";}).filter(Boolean);
               return (
                 <div key={d.id} style={S.card}>
@@ -478,8 +537,7 @@ useEffect(() => {
             </div>
             {filtP.map(p=>{
               const cat=CATEGORIES[p.cat];
-              const pD=ASSIGNMENTS.filter(a=>a.projectId===p.id).map(a=>{ const dr=drivers.find(d=>d.id===a.driverId); return dr?{name:dr.name,shift:a.shift,days:a.days}:null;}).filter(Boolean);
-              const pP=PARTNERS.filter(pt=>pt.notes&&pt.notes.toLowerCase().includes(p.name.toLowerCase()));
+              const pD=assignments.filter(a=>a.projectId===p.id).map(a=>{ const dr=drivers.find(d=>d.id===a.driverId); return dr?{name:dr.name,shift:a.shift,days:a.days}:null;}).filter(Boolean);
               return (
                 <div key={p.id} style={{...S.card,opacity:p.status==="stopped"?0.5:1}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
@@ -542,14 +600,15 @@ useEffect(() => {
           <div style={S.view}>
             <div style={{fontSize:20,fontWeight:800,marginBottom:16}}>Αρχείο Μεταβολών</div>
             {log.map(l=>{
-              const c=l.type==="absence"?"#ff6b6b":l.type==="substitution"?"#f5c518":"#5b8cff";
+              const c=l.type==="absence"?"#ff6b6b":l.type==="substitution"?"#f5c518":l.type==="assignment"?"#a78bfa":l.type==="leave"?"#00e5a0":"#5b8cff";
+              const label = l.type==="absence"?"Απουσία":l.type==="substitution"?"Αντικατάσταση":l.type==="assignment"?"Μεταφορά/Ανάθεση":l.type==="leave"?"Άδεια":"Σύστημα";
               return (
                 <div key={l.id} style={S.card}>
                   <div style={{display:"flex",gap:10}}>
                     <div style={{width:10,height:10,borderRadius:"50%",flexShrink:0,marginTop:4,background:c}}/>
                     <div>
                       <div style={{...S.badge,display:"inline-block",marginBottom:4,background:c+"22",color:c,border:`1px solid ${c}`}}>
-                        {l.type==="absence"?"Απουσία":l.type==="substitution"?"Αντικατάσταση":"Σύστημα"}
+                        {label}
                       </div>
                       <div style={{fontSize:13,color:"#b0b8d0",lineHeight:1.4}}>{l.text}</div>
                       <div style={{fontSize:11,color:"#445",marginTop:3}}>{l.ts}</div>
