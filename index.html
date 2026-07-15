@@ -35,14 +35,14 @@ const CATEGORIES = {
 };
 
 const PROJECTS = [
-  { id:1,  name:"ELTREKKA Ταύρος",        cat:"antalaktika", client:"ELTREKKA",     address:"Πειραιώς 180, Ταύρος",                     rateDay:12.00, rateNight:null,  rateSun:null,  status:"active" },
-  { id:2,  name:"ELTREKKA Ηλιούπολη",     cat:"antalaktika", client:"ELTREKKA",     address:"Βουλιαγμένης 429, Ηλιούπολη",              rateDay:12.00, rateNight:null,  rateSun:null,  status:"active" },
-  { id:3,  name:"ELTREKKA Αιγάλεω",       cat:"antalaktika", client:"ELTREKKA",     address:"Λ.Αθηνών 369, Αιγάλεω",                   rateDay:12.00, rateNight:null,  rateSun:null,  status:"active" },
-  { id:4,  name:"ELTREKKA Χαλάνδρι",      cat:"antalaktika", client:"ELTREKKA",     address:"Λ.Ηρακλείτου 74, Χαλάνδρι",               rateDay:12.00, rateNight:null,  rateSun:null,  status:"active" },
-  { id:5,  name:"SCAMA Παπού 19",         cat:"antalaktika", client:"SCAMA",        address:"Παπού 19, Αθήνα",                          rateDay:12.25, rateNight:null,  rateSun:null,  status:"active" },
-  { id:6,  name:"SCAMA Νέα Ιωνία",        cat:"antalaktika", client:"SCAMA",        address:"Ιφιγενείας 79, Νέα Ιωνία",                 rateDay:12.25, rateNight:null,  rateSun:null,  status:"active" },
-  { id:7,  name:"SCAMA Καλλιθέα",         cat:"antalaktika", client:"SCAMA",        address:"Ελ.Βενιζέλου 363, Καλλιθέα",              rateDay:12.25, rateNight:null,  rateSun:null,  status:"active" },
-  { id:8,  name:"SCAMA Χαλάνδρι",         cat:"antalaktika", client:"SCAMA",        address:"Μεσογείων 311, Χαλάνδρι",                  rateDay:12.25, rateNight:null,  rateSun:null,  status:"active" },
+  { id:1,  name:"ELTREKKA Ταύρος",        cat:"antalaktika", client:"ELTREKKA",     address:"Πειραιώς 180, Ταύρος",                     rateDay:12.50, rateNight:null,  rateSun:null,  status:"active" },
+  { id:2,  name:"ELTREKKA Ηλιούπολη",     cat:"antalaktika", client:"ELTREKKA",     address:"Βουλιαγμένης 429, Ηλιούπολη",              rateDay:12.50, rateNight:null,  rateSun:null,  status:"active" },
+  { id:3,  name:"ELTREKKA Αιγάλεω",       cat:"antalaktika", client:"ELTREKKA",     address:"Λ.Αθηνών 369, Αιγάλεω",                   rateDay:12.50, rateNight:null,  rateSun:null,  status:"active" },
+  { id:4,  name:"ELTREKKA Χαλάνδρι",      cat:"antalaktika", client:"ELTREKKA",     address:"Λ.Ηρακλείτου 74, Χαλάνδρι",               rateDay:12.50, rateNight:null,  rateSun:null,  status:"active" },
+  { id:5,  name:"SCAMA Παπού 19",         cat:"antalaktika", client:"SCAMA",        address:"Παπού 19, Αθήνα",                          rateDay:12.50, rateNight:null,  rateSun:null,  status:"active" },
+  { id:6,  name:"SCAMA Νέα Ιωνία",        cat:"antalaktika", client:"SCAMA",        address:"Ιφιγενείας 79, Νέα Ιωνία",                 rateDay:12.50, rateNight:null,  rateSun:null,  status:"active" },
+  { id:7,  name:"SCAMA Καλλιθέα",         cat:"antalaktika", client:"SCAMA",        address:"Ελ.Βενιζέλου 363, Καλλιθέα",              rateDay:12.50, rateNight:null,  rateSun:null,  status:"active" },
+  { id:8,  name:"SCAMA Χαλάνδρι",         cat:"antalaktika", client:"SCAMA",        address:"Μεσογείων 311, Χαλάνδρι",                  rateDay:12.50, rateNight:null,  rateSun:null,  status:"active" },
   { id:9,  name:"Ανδρεαδάκης",            cat:"antalaktika", client:"Ανδρεαδάκης",  address:"Νίρβανα 35, Κάτω Πατήσια",                rateDay:12.50, rateNight:null,  rateSun:null,  status:"active" },
   { id:10, name:"Παπούτσης",              cat:"antalaktika", client:"Παπούτσης",    address:"Λεωφ.Φυλής 141",                           rateDay:12.50, rateNight:null,  rateSun:null,  status:"active" },
   { id:11, name:"INTERPART Αιγάλεω",      cat:"antalaktika", client:"INTERPART",    address:"Παράλληλη Λεωφ.Κηφισού 44, Αιγάλεω",     rateDay:12.50, rateNight:13.00, rateSun:15.00, status:"active" },
@@ -59,9 +59,9 @@ const PROJECTS = [
   { id:22, name:"Γρατσίας",              cat:"antalaktika", client:"Γρατσίας",     address:"",                                          rateDay:12.50, rateNight:null,  rateSun:null,  status:"active" },
   { id:23, name:"Γρηγόρης Κηφισιά",      cat:"estiation",   client:"Γρηγόρης",     address:"Γεωρ.Λύρα 19, Κηφισιά",                   rateDay:12.00, rateNight:null,  rateSun:null,  status:"active" },
   { id:24, name:"Goodys Π.Φάληρο",       cat:"estiation",   client:"Goodys",       address:"",                                          rateDay:11.00, rateNight:13.00, rateSun:14.50, status:"stopped" },
-  { id:25, name:"Κάβα Νέκταρ",           cat:"kava",        client:"Κάβα Νέκταρ",  address:"Ερμού 121, Αθήνα",                         rateDay:12.00, rateNight:13.50, rateSun:16.00, status:"active" },
+  { id:25, name:"Κάβα Νέκταρ",           cat:"kava",        client:"Κάβα Νέκταρ",  address:"Ερμού 121, Αθήνα",                         rateDay:12.00, rateNight:13.50, rateSun:16.00, rateSunNight:18.75, status:"active" },
   { id:26, name:"My Market",             cat:"super",       client:"My Market",    address:"Χαλανδρίου 17, Αγ.Παρασκευή",              rateDay:12.00, rateNight:null,  rateSun:null,  status:"active" },
-  { id:27, name:"Eurobank",              cat:"trapeza",     client:"Eurobank",     address:"Λεωφ.Ηρακλείτου 332",                      rateDay:12.00, rateNight:null,  rateSun:null,  status:"active" },
+  { id:27, name:"Eurobank",              cat:"trapeza",     client:"Eurobank",     address:"Λεωφ.Ηρακλείτου 332",                      rateDay:11.00, rateNight:null,  rateSun:null,  status:"active" },
 ];
 
 const ASSIGNMENTS_SEED = [
@@ -347,6 +347,12 @@ function App() {
     const n = new Date();
     return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}`;
   });
+  const [invoiceOpen, setInvoiceOpen] = useState(false);
+  const [invoiceProjectId, setInvoiceProjectId] = useState(null);
+  const [invoiceMonth, setInvoiceMonth] = useState(() => {
+    const n = new Date();
+    return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}`;
+  });
   const recRef = useRef(null);
   const msgEnd = useRef(null);
 
@@ -383,7 +389,11 @@ function App() {
 
     const pl = PROJECTS.filter(p=>p.status==="active").map(p=>{
       const pD = assignments.filter(a=>a.projectId===p.id).map(a=>{ const dr=drivers.find(d=>d.id===a.driverId); return dr?dr.name.split(" ")[0]:"";}).filter(Boolean).join(",");
-      return `- ${p.name}|id:${p.id}|${p.address||"—"}|€${p.rateDay}/ώρα|Οδηγοί:${pD||"—"}`;
+      let rateStr = `€${p.rateDay}/ώρα`;
+      if (p.rateNight) rateStr += `|νύχτα€${p.rateNight}`;
+      if (p.rateSun) rateStr += `|Κυρ€${p.rateSun}`;
+      if (p.rateSunNight) rateStr += `|Κυρ+νύχτα€${p.rateSunNight}`;
+      return `- ${p.name}|id:${p.id}|${p.address||"—"}|${rateStr}|Οδηγοί:${pD||"—"}`;
     }).join("\n");
 
     return `Είσαι η ALLYRA, ψηφιακή AI γραμματέας courier εταιρείας, μόνο ελληνικά. Χρήστης: Alex (διευθυντής).
@@ -569,6 +579,75 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
       absenceDaysTotal, absenceHoursLost, hourEntryDetails, hoursDeltaTotal,
       estimatedTotal, overtimeEstimate, monthLogEntries
     };
+  };
+
+  const parseShiftHours = (shift) => {
+    const m = (shift||"").match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
+    if (!m) return 0;
+    const h1=parseInt(m[1],10), mi1=parseInt(m[2],10), h2=parseInt(m[3],10), mi2=parseInt(m[4],10);
+    let mins = (h2*60+mi2)-(h1*60+mi1);
+    if (mins<0) mins += 24*60;
+    return mins/60;
+  };
+
+  const parseDaysPerWeek = (daysStr) => {
+    const s = (daysStr||"").toLowerCase();
+    if (!s) return 5;
+    if (s.includes("καθημερ")) return 7;
+    if (s.includes("δευ-σαβ")) return 6;
+    if (s.includes("δευ-παρ")) return 5;
+    const tokens = ["δευ","τρι","τετ","πεμ","παρ","σαβ","κυρ"];
+    const count = tokens.filter(tok=>s.includes(tok)).length;
+    return count>0 ? count : 5;
+  };
+
+  const computeProjectMonthlyReport = (projectId, monthStr) => {
+    const project = PROJECTS.find(p=>p.id===projectId);
+    if (!project) return null;
+    const [yy,mm] = monthStr.split("-").map(Number);
+    const daysInMonth = new Date(yy, mm, 0).getDate();
+    const weeksInMonth = daysInMonth/7;
+
+    const projectAssignments = assignments.filter(a=>a.projectId===projectId);
+    let baselineTotal = 0;
+    const driverLines = [];
+    const ambiguousNotes = [];
+
+    projectAssignments.forEach(a => {
+      const driver = drivers.find(d=>d.id===a.driverId);
+      if (!driver) return;
+      const shiftHours = parseShiftHours(a.shift);
+      const daysPerWeek = parseDaysPerWeek(a.days);
+      const baseline = shiftHours * daysPerWeek * weeksInMonth;
+
+      const driverProjectCount = assignments.filter(x=>x.driverId===a.driverId).length;
+      let absenceHours = 0;
+      if (driverProjectCount === 1) {
+        const driverAbsences = log.filter(l => l.driverId===a.driverId && (l.type==="absence"||l.type==="leave") && (() => {
+          const d = parseLogDate(l.ts); return d && d.year===yy && d.month===mm;
+        })());
+        let absenceDays = 0;
+        driverAbsences.forEach(l => { absenceDays += parseRangeDays(l.text); });
+        absenceHours = absenceDays * shiftHours;
+      } else if (driverProjectCount > 1) {
+        const hasAbsence = log.some(l => l.driverId===a.driverId && (l.type==="absence"||l.type==="leave") && (() => {
+          const d = parseLogDate(l.ts); return d && d.year===yy && d.month===mm;
+        })());
+        if (hasAbsence) ambiguousNotes.push(`${driver.name} έχει καταγεγραμμένη απουσία αλλά δουλεύει σε ${driverProjectCount} projects — έλεγξε χειροκίνητα ποιο project επηρεάζεται.`);
+      }
+
+      const projectHoursEntries = dailyHours.filter(h => h.driverId===a.driverId && h.projectId===projectId && h.date && h.date.startsWith(monthStr));
+      let delta = 0;
+      projectHoursEntries.forEach(h => { delta += (parseFloat(h.hours)||0) - shiftHours; });
+
+      const finalHours = baseline - absenceHours + delta;
+      baselineTotal += finalHours;
+      driverLines.push({ driver, shiftHours, daysPerWeek, baseline, absenceHours, delta, finalHours });
+    });
+
+    const cost = baselineTotal * (project.rateDay||0);
+
+    return { project, daysInMonth, driverLines, totalHours:baselineTotal, cost, ambiguousNotes };
   };
 
   const activeD=drivers.filter(d=>d.status==="active").length;
@@ -792,8 +871,12 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
                     <span style={{fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20,background:"#00e5a022",color:"#00e5a0",border:"1px solid #00e5a0"}}>Ημέρα {fmtEur(p.rateDay)}/ώρα</span>
                     {p.rateNight && <span style={{fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20,background:"#5b8cff22",color:"#5b8cff",border:"1px solid #5b8cff"}}>Βράδυ {fmtEur(p.rateNight)}</span>}
                     {p.rateSun && <span style={{fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20,background:"#f5c51822",color:"#f5c518",border:"1px solid #f5c518"}}>Κυρ {fmtEur(p.rateSun)}</span>}
+                    {p.rateSunNight && <span style={{fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20,background:"#ff6b6b22",color:"#ff6b6b",border:"1px solid #ff6b6b"}}>Κυρ+Νύχτα {fmtEur(p.rateSunNight)}</span>}
                   </div>
                   {pD.map((d,i)=><div key={i} style={S.cardSub}>👤 {d.name} · {d.shift} · {d.days}</div>)}
+                  <button style={{marginTop:8,background:"none",border:"none",color:"#f5c518",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0}} onClick={()=>{setInvoiceProjectId(p.id);setInvoiceOpen(true);}}>
+                    🧾 Μηνιαία Τιμολόγηση
+                  </button>
                 </div>
               );
             })}
@@ -950,6 +1033,57 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
                     ))}
                     <div style={{fontSize:10,color:"#556",marginTop:10,lineHeight:1.5}}>
                       ⚠️ Εκτιμώμενος υπολογισμός βάσει σύμβασης + καταγεγραμμένων εξαιρέσεων. Δεν αντικαθιστά ακριβή καταγραφή παρουσίας — να επαληθεύεται πριν την πληρωμή.
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {invoiceOpen && (
+        <div style={S.overlay}>
+          <div style={S.modal}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 16px 12px",borderBottom:"1px solid #1e2a4a"}}>
+              <span style={{fontWeight:800,fontSize:16,color:"#f5c518"}}>🧾 Μηνιαία Τιμολόγηση</span>
+              <button style={{background:"none",border:"none",color:"#556",cursor:"pointer",fontSize:20}} onClick={()=>setInvoiceOpen(false)}>✕</button>
+            </div>
+            <div style={{padding:16,overflowY:"auto"}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Project</div>
+              <select style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:14}} value={invoiceProjectId||""} onChange={e=>setInvoiceProjectId(parseInt(e.target.value,10))}>
+                {PROJECTS.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Μήνας</div>
+              <input type="month" style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:14}} value={invoiceMonth} onChange={e=>setInvoiceMonth(e.target.value)}/>
+
+              {invoiceProjectId && (() => {
+                const r = computeProjectMonthlyReport(invoiceProjectId, invoiceMonth);
+                if (!r) return null;
+                return (
+                  <div>
+                    <div style={{background:"#0a0f1e",border:"1px solid #00e5a0",borderRadius:12,padding:16,marginBottom:14,textAlign:"center"}}>
+                      <div style={{fontSize:13,color:"#778",marginBottom:4}}>{r.totalHours.toFixed(1)} ώρες × {fmtEur(r.project.rateDay)}/ώρα</div>
+                      <div style={{fontSize:32,fontWeight:900,color:"#00e5a0"}}>{fmtEur(r.cost)}</div>
+                    </div>
+                    <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Ανάλυση ανά οδηγό</div>
+                    {r.driverLines.length===0 && <div style={{fontSize:12,color:"#445",marginBottom:10}}>Κανένας οδηγός ανατεθειμένος σε αυτό το project.</div>}
+                    {r.driverLines.map((dl,i)=>(
+                      <div key={i} style={{...S.card,padding:10,marginBottom:6}}>
+                        <div style={{fontSize:13,fontWeight:700,marginBottom:2}}>{dl.driver.name}</div>
+                        <div style={{fontSize:11,color:"#778"}}>{dl.shiftHours.toFixed(1)} ώρες/ημέρα × {dl.daysPerWeek} ημέρες/βδομάδα → {dl.baseline.toFixed(1)} βασικές ώρες</div>
+                        {dl.absenceHours>0 && <div style={{fontSize:11,color:"#ff6b6b"}}>− {dl.absenceHours.toFixed(1)} ώρες απουσίας</div>}
+                        {dl.delta!==0 && <div style={{fontSize:11,color:dl.delta>0?"#00e5a0":"#f5c518"}}>{dl.delta>0?"+":""}{dl.delta.toFixed(1)} ώρες απόκλισης</div>}
+                        <div style={{fontSize:12,fontWeight:700,color:"#e8eaf6",marginTop:4}}>Σύνολο: {dl.finalHours.toFixed(1)} ώρες</div>
+                      </div>
+                    ))}
+                    {r.ambiguousNotes.length>0 && (
+                      <div style={{background:"#f5c51811",border:"1px solid #f5c518",borderRadius:10,padding:10,marginTop:10}}>
+                        {r.ambiguousNotes.map((n,i)=><div key={i} style={{fontSize:11,color:"#f5c518",marginBottom:4}}>⚠️ {n}</div>)}
+                      </div>
+                    )}
+                    <div style={{fontSize:10,color:"#556",marginTop:10,lineHeight:1.5}}>
+                      ⚠️ Εκτιμώμενος υπολογισμός βάσει προγραμματισμένου ωραρίου + καταγεγραμμένων εξαιρέσεων. Δεν διαχωρίζει αυτόματα νυχτερινές/Κυριακή ώρες — να επαληθεύεται πριν την τιμολόγηση.
                     </div>
                   </div>
                 );
