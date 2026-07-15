@@ -341,6 +341,12 @@ function App() {
   const [calcType, setCalcType] = useState("normal");
   const [calcMoto, setCalcMoto] = useState("company");
   const [calcDT, setCalcDT] = useState("employee");
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportDriverId, setReportDriverId] = useState(null);
+  const [reportMonth, setReportMonth] = useState(() => {
+    const n = new Date();
+    return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}`;
+  });
   const recRef = useRef(null);
   const msgEnd = useRef(null);
 
@@ -513,6 +519,58 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
     return {h, rate, total:(h*rate).toFixed(2)};
   };
 
+  const parseLogDate = (ts) => {
+    const m = (ts||"").match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (!m) return null;
+    return { day:parseInt(m[1],10), month:parseInt(m[2],10), year:parseInt(m[3],10) };
+  };
+
+  const parseRangeDays = (text) => {
+    const m = (text||"").match(/(\d{1,2})\s*-\s*(\d{1,2})\/(\d{1,2})/);
+    if (m) {
+      const d1=parseInt(m[1],10), d2=parseInt(m[2],10);
+      if (d2>=d1) return d2-d1+1;
+    }
+    return 1;
+  };
+
+  const computeMonthlyReport = (driverId, monthStr) => {
+    const driver = drivers.find(d=>d.id===driverId);
+    if (!driver) return null;
+    const [yy,mm] = monthStr.split("-").map(Number);
+    const daysInMonth = new Date(yy, mm, 0).getDate();
+    const contractWeek = driver.contract_hours_week || 40;
+    const dailyEquivalent = contractWeek / 5;
+    const baselineMonthlyHours = (contractWeek/7) * daysInMonth;
+
+    const monthLogEntries = log.filter(l => l.driverId===driverId && (() => {
+      const d = parseLogDate(l.ts); return d && d.year===yy && d.month===mm;
+    })());
+    const monthHoursEntries = dailyHours.filter(h => h.driverId===driverId && h.date && h.date.startsWith(monthStr));
+
+    let absenceDaysTotal = 0;
+    monthLogEntries.filter(l=>l.type==="absence"||l.type==="leave").forEach(l => {
+      absenceDaysTotal += parseRangeDays(l.text);
+    });
+
+    let hoursDeltaTotal = 0;
+    const hourEntryDetails = monthHoursEntries.map(h => {
+      const delta = (parseFloat(h.hours)||0) - dailyEquivalent;
+      hoursDeltaTotal += delta;
+      return { ...h, delta };
+    });
+
+    const absenceHoursLost = absenceDaysTotal * dailyEquivalent;
+    const estimatedTotal = baselineMonthlyHours - absenceHoursLost + hoursDeltaTotal;
+    const overtimeEstimate = hourEntryDetails.filter(h=>h.delta>0).reduce((s,h)=>s+h.delta,0);
+
+    return {
+      driver, contractWeek, dailyEquivalent, daysInMonth, baselineMonthlyHours,
+      absenceDaysTotal, absenceHoursLost, hourEntryDetails, hoursDeltaTotal,
+      estimatedTotal, overtimeEstimate, monthLogEntries
+    };
+  };
+
   const activeD=drivers.filter(d=>d.status==="active").length;
   const absentD=drivers.filter(d=>d.status==="absent").length;
   const terminatedD=drivers.filter(d=>d.status==="terminated").length;
@@ -674,9 +732,16 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
                     </div>
                     <div style={{...S.badge,background:scol(d.status)+"22",color:scol(d.status),border:`1px solid ${scol(d.status)}`}}>{slabel(d.status)}</div>
                   </div>
-                  <button style={{marginTop:8,background:"none",border:"none",color:"#5b8cff",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0}} onClick={()=>setExpandedDriver(isExpanded?null:d.id)}>
-                    {isExpanded ? "▲ Απόκρυψη ιστορικού" : `▼ Πλήρες ιστορικό (${driverHistory.length})`}
-                  </button>
+                  <div style={{display:"flex",gap:14,marginTop:8}}>
+                    <button style={{background:"none",border:"none",color:"#5b8cff",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0}} onClick={()=>setExpandedDriver(isExpanded?null:d.id)}>
+                      {isExpanded ? "▲ Απόκρυψη ιστορικού" : `▼ Πλήρες ιστορικό (${driverHistory.length})`}
+                    </button>
+                    {driversView!=="archived" && (
+                      <button style={{background:"none",border:"none",color:"#f5c518",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0}} onClick={()=>{setReportDriverId(d.id);setReportOpen(true);}}>
+                        📊 Μηνιαία Αναφορά
+                      </button>
+                    )}
+                  </div>
                   {isExpanded && (
                     <div style={{marginTop:8,borderTop:"1px solid #1e2a4a",paddingTop:8}}>
                       {driverHistory.length===0 && <div style={{fontSize:12,color:"#445"}}>Δεν υπάρχει ακόμα καταγεγραμμένο ιστορικό.</div>}
@@ -839,6 +904,56 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
                   <div style={{fontSize:36,fontWeight:900,color:"#00e5a0"}}>€{calcResult().total}</div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {reportOpen && (
+        <div style={S.overlay}>
+          <div style={S.modal}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 16px 12px",borderBottom:"1px solid #1e2a4a"}}>
+              <span style={{fontWeight:800,fontSize:16,color:"#f5c518"}}>📊 Μηνιαία Αναφορά</span>
+              <button style={{background:"none",border:"none",color:"#556",cursor:"pointer",fontSize:20}} onClick={()=>setReportOpen(false)}>✕</button>
+            </div>
+            <div style={{padding:16,overflowY:"auto"}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Οδηγός</div>
+              <select style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:14}} value={reportDriverId||""} onChange={e=>setReportDriverId(parseInt(e.target.value,10))}>
+                {drivers.filter(d=>d.status!=="terminated").map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+              <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Μήνας</div>
+              <input type="month" style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:14}} value={reportMonth} onChange={e=>setReportMonth(e.target.value)}/>
+
+              {reportDriverId && (() => {
+                const r = computeMonthlyReport(reportDriverId, reportMonth);
+                if (!r) return null;
+                return (
+                  <div>
+                    <div style={{background:"#0a0f1e",border:"1px solid #a78bfa",borderRadius:12,padding:16,marginBottom:14}}>
+                      <div style={{fontSize:13,color:"#778",marginBottom:6}}>Σύμβαση: {r.contractWeek} ώρες/βδομάδα ({r.dailyEquivalent.toFixed(1)} ώρες/ημέρα)</div>
+                      <div style={{fontSize:13,color:"#778",marginBottom:6}}>Βασικές ώρες μήνα ({r.daysInMonth} ημέρες): <b style={{color:"#e8eaf6"}}>{r.baselineMonthlyHours.toFixed(1)}</b></div>
+                      {r.absenceDaysTotal>0 && <div style={{fontSize:13,color:"#ff6b6b",marginBottom:6}}>− Απουσίες/Άδειες: {r.absenceDaysTotal} ημέρες (−{r.absenceHoursLost.toFixed(1)} ώρες)</div>}
+                      {r.hoursDeltaTotal!==0 && <div style={{fontSize:13,color:r.hoursDeltaTotal>0?"#00e5a0":"#f5c518",marginBottom:6}}>{r.hoursDeltaTotal>0?"+":""}{r.hoursDeltaTotal.toFixed(1)} ώρες από καταγεγραμμένες αποκλίσεις</div>}
+                      <div style={{borderTop:"1px solid #1e2a4a",marginTop:10,paddingTop:10}}>
+                        <div style={{fontSize:13,color:"#778"}}>Εκτιμώμενο σύνολο ωρών μήνα</div>
+                        <div style={{fontSize:28,fontWeight:900,color:"#00e5a0"}}>{r.estimatedTotal.toFixed(1)} ώρες</div>
+                        {r.overtimeEstimate>0 && <div style={{fontSize:12,color:"#f5c518",marginTop:4}}>Εκ των οποίων ~{r.overtimeEstimate.toFixed(1)} ώρες υπερωρία (από καταγεγραμμένες μέρες)</div>}
+                      </div>
+                    </div>
+                    <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Καταγραφές μήνα ({r.monthLogEntries.length})</div>
+                    {r.monthLogEntries.length===0 && <div style={{fontSize:12,color:"#445",marginBottom:10}}>Καμία καταγραφή αυτό το μήνα.</div>}
+                    {r.monthLogEntries.map(l=>(
+                      <div key={l.id} style={{...S.card,padding:10,marginBottom:6}}>
+                        <div style={{fontSize:12,color:"#b0b8d0"}}>{l.text}</div>
+                        <div style={{fontSize:10,color:"#445",marginTop:2}}>{l.ts}</div>
+                      </div>
+                    ))}
+                    <div style={{fontSize:10,color:"#556",marginTop:10,lineHeight:1.5}}>
+                      ⚠️ Εκτιμώμενος υπολογισμός βάσει σύμβασης + καταγεγραμμένων εξαιρέσεων. Δεν αντικαθιστά ακριβή καταγραφή παρουσίας — να επαληθεύεται πριν την πληρωμή.
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
