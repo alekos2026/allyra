@@ -353,22 +353,28 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
         try {
           const action = JSON.parse(actionMatch[1]);
           if (action.type === "update_driver") {
-            let extraFields = {};
-            if (action.field === "status" && action.value === "terminated") {
-              const dateIso = customLogDate || new Date().toISOString().slice(0,10);
-              extraFields = { terminated_date: dateIso, terminated_reason: txt };
-            }
-            if (action.field === "status" && action.value === "active") {
-              extraFields = { terminated_date: null, terminated_reason: null };
-            }
-            setDrivers(prev => prev.map(d => d.id === action.id ? {...d, [action.field]: action.value, ...extraFields} : d));
-            supabase.from('drivers').update({ [action.field]: action.value, ...extraFields }).eq('id', action.id).then(() => {});
-            actionDriverId = action.id;
-            if (action.field === "status") {
-              const label = action.value === "terminated" ? "Αποχώρησε/Απολύθηκε" : action.value === "absent" ? "Απών" : "Ενεργός";
-              notify(`Status οδηγού: ${label} ✓`, "success");
+            const isBackdatedTemporary = customLogDate && action.field === "status" && (action.value === "absent");
+            if (isBackdatedTemporary) {
+              actionDriverId = action.id;
+              notify(`Καταχωρήθηκε αναδρομικά (${customLogDate}) — τρέχον status δεν άλλαξε ✓`, "success");
             } else {
-              notify("Ενημέρωση οδηγού καταχωρήθηκε ✓","success");
+              let extraFields = {};
+              if (action.field === "status" && action.value === "terminated") {
+                const dateIso = customLogDate || new Date().toISOString().slice(0,10);
+                extraFields = { terminated_date: dateIso, terminated_reason: txt };
+              }
+              if (action.field === "status" && action.value === "active") {
+                extraFields = { terminated_date: null, terminated_reason: null };
+              }
+              setDrivers(prev => prev.map(d => d.id === action.id ? {...d, [action.field]: action.value, ...extraFields} : d));
+              supabase.from('drivers').update({ [action.field]: action.value, ...extraFields }).eq('id', action.id).then(() => {});
+              actionDriverId = action.id;
+              if (action.field === "status") {
+                const label = action.value === "terminated" ? "Αποχώρησε/Απολύθηκε" : action.value === "absent" ? "Απών" : "Ενεργός";
+                notify(`Status οδηγού: ${label} ✓`, "success");
+              } else {
+                notify("Ενημέρωση οδηγού καταχωρήθηκε ✓","success");
+              }
             }
           }
           if (action.type === "assign_driver") {
