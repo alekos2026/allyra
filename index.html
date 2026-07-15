@@ -248,10 +248,27 @@ function detectBackdate(text, refDate) {
   return null;
 }
 
+function detectHoursFromText(text) {
+  const t = text.toLowerCase();
+  const rangeMatch = t.match(/(\d{1,2}):(\d{2})\s*(?:-|έως|ως|μέχρι)\s*(\d{1,2}):(\d{2})/);
+  if (rangeMatch) {
+    const h1=parseInt(rangeMatch[1],10), m1=parseInt(rangeMatch[2],10);
+    const h2=parseInt(rangeMatch[3],10), m2=parseInt(rangeMatch[4],10);
+    let mins = (h2*60+m2) - (h1*60+m1);
+    if (mins < 0) mins += 24*60;
+    return Math.round((mins/60)*100)/100;
+  }
+  const hoursMatch = t.match(/(\d+(?:[.,]\d+)?)\s*ώρ/);
+  if (hoursMatch) {
+    return parseFloat(hoursMatch[1].replace(",", "."));
+  }
+  return null;
+}
+
 function App() {
   const [tab, setTab] = useState("home");
 
-  const [drivers, setDrivers] = useState(DRIVERS);
+  const [drivers, setDrivers] = useState(DRIVERS.map(d=>({...d, contract_hours_week: d.contract_hours_week||40})));
   useEffect(() => {
     async function fetchDrivers() {
       const { data, error } = await supabase.from('drivers').select('*').order('id');
@@ -283,6 +300,17 @@ function App() {
       if (!error && data && data.length > 0) setLog(data);
     }
     fetchLog();
+  }, []);
+
+  const [dailyHours, setDailyHours] = useState([]);
+  useEffect(() => {
+    async function fetchDailyHours() {
+      const { data, error } = await supabase.from('daily_hours')
+        .select('id, driverId:driverid, date, projectId:projectid, hours, note')
+        .order('id', { ascending:false });
+      if (!error && data) setDailyHours(data);
+    }
+    fetchDailyHours();
   }, []);
 
   const [chatOpen, setChatOpen] = useState(false);
@@ -344,7 +372,7 @@ function App() {
     const dl = drivers.map(d => {
       const asgn = assignments.filter(a=>a.driverId===d.id);
       const pNames = asgn.map(a=>{ const pr=PROJECTS.find(p=>p.id===a.projectId); return pr?`${pr.name}(${a.shift})`:""}).filter(Boolean).join(", ");
-      return `- ${d.name}|id:${d.id}|status:${d.status}|${pNames||"Χωρίς project"}|${d.moto}(${d.motoType==="own"?"ιδ":"εταιρ"})|τηλ:${d.phone||"—"}|${d.area||"—"}`;
+      return `- ${d.name}|id:${d.id}|status:${d.status}|σύμβαση:${d.contract_hours_week||40}ώρες/βδομάδα|${pNames||"Χωρίς project"}|${d.moto}(${d.motoType==="own"?"ιδ":"εταιρ"})|τηλ:${d.phone||"—"}|${d.area||"—"}`;
     }).join("\n");
 
     const pl = PROJECTS.filter(p=>p.status==="active").map(p=>{
@@ -364,14 +392,19 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
 ΑΝ Ο ΧΡΗΣΤΗΣ ΑΝΑΦΕΡΕΙ ΓΙΑ ΤΗΝ ΚΑΤΑΧΩΡΗΣΗ ΜΙΑ ΣΥΓΚΕΚΡΙΜΕΝΗ ΠΡΟΗΓΟΥΜΕΝΗ ΗΜΕΡΟΜΗΝΙΑ Ή ΗΜΕΡΑ (π.χ. "στις 10/7", "χθες", "προχθές", "την Τρίτη", "πριν 3 μέρες"), υπολόγισε τη ΣΩΣΤΗ ημερομηνία σε μορφή YYYY-MM-DD με βάση τη ΣΗΜΕΡΙΝΗ ημερομηνία, και πρόσθεσε ΠΡΙΝ από οποιαδήποτε ACTION γραμμή, μία επιπλέον γραμμή ΑΚΡΙΒΩΣ σε αυτή τη μορφή:
 [LOGDATE:YYYY-MM-DD]
 Αν ο χρήστης ΔΕΝ αναφέρει καμία προηγούμενη ημερομηνία, ΜΗΝ βάζεις καμία LOGDATE γραμμή (θα καταγραφεί αυτόματα με τη σημερινή ημερομηνία/ώρα).
-ΑΝ Ο ΧΡΗΣΤΗΣ ΖΗΤΑΕΙ ΑΛΛΑΓΗ ΣΕ ΟΔΗΓΟ (όνομα, τηλέφωνο, ή status), ΠΡΕΠΕΙ ΠΑΝΤΑ να συμπεριλάβεις ΣΤΟ ΤΕΛΟΣ της απάντησής σου μία γραμμή ΑΚΡΙΒΩΣ σε αυτή τη μορφή, ΧΩΡΙΣ ΝΑ ΡΩΤΑΣ ΕΠΙΒΕΒΑΙΩΣΗ ΠΡΩΤΑ:
-[ACTION:{"type":"update_driver","id":<id>,"field":"<name|phone|status>","value":"<τιμή>"}]
+ΑΝ Ο ΧΡΗΣΤΗΣ ΖΗΤΑΕΙ ΑΛΛΑΓΗ ΣΕ ΟΔΗΓΟ (όνομα, τηλέφωνο, status, ή σύμβαση ωρών), ΠΡΕΠΕΙ ΠΑΝΤΑ να συμπεριλάβεις ΣΤΟ ΤΕΛΟΣ της απάντησής σου μία γραμμή ΑΚΡΙΒΩΣ σε αυτή τη μορφή, ΧΩΡΙΣ ΝΑ ΡΩΤΑΣ ΕΠΙΒΕΒΑΙΩΣΗ ΠΡΩΤΑ:
+[ACTION:{"type":"update_driver","id":<id>,"field":"<name|phone|status|contract_hours_week>","value":"<τιμή>"}]
 Το πεδίο status δέχεται ΜΟΝΟ τις τιμές: "active" (ενεργός/επέστρεψε), "absent" (προσωρινή απουσία/άρρωστος/πτώση κλπ), "terminated" (απολύθηκε/παραιτήθηκε/αποχώρησε ΟΡΙΣΤΙΚΑ).
+Το πεδίο contract_hours_week δέχεται αριθμό ωρών/βδομάδα (π.χ. 20 για 4ωρο πενθήμερο, 30 για 6ωρο πενθήμερο, 40 για 8ωρο πενθήμερο). Χρησιμοποίησέ το όταν ο χρήστης λέει π.χ. "ο Χ είναι τώρα 6ωρος" ή "άλλαξε τη σύμβαση του Χ σε 30 ώρες".
 Παράδειγμα (όνομα): "άλλαξε Πατεράκης σε Παταράκης" (id 4) → [ACTION:{"type":"update_driver","id":4,"field":"name","value":"Παταράκης Παύλος"}]
 Παράδειγμα (προσωρινή απουσία): "ο Κόντος Άγγελος είναι απών σήμερα" (id 7) → [ACTION:{"type":"update_driver","id":7,"field":"status","value":"absent"}]
 Παράδειγμα (απόλυση/αποχώρηση): "ο Αθανασόπουλος απολύθηκε" (id 21) → [ACTION:{"type":"update_driver","id":21,"field":"status","value":"terminated"}]
+Παράδειγμα (σύμβαση): "ο Παταράκης έγινε 6ωρος" (id 4) → [ACTION:{"type":"update_driver","id":4,"field":"contract_hours_week","value":"30"}]
 ΑΝ Ο ΧΡΗΣΤΗΣ ΖΗΤΑΕΙ ΜΕΤΑΦΟΡΑ/ΑΝΑΘΕΣΗ ΟΔΗΓΟΥ ΣΕ ΝΕΟ PROJECT, ΠΡΕΠΕΙ ΠΑΝΤΑ να συμπεριλάβεις ΣΤΟ ΤΕΛΟΣ μία γραμμή ΑΚΡΙΒΩΣ σε αυτή τη μορφή:
 [ACTION:{"type":"assign_driver","driverId":<id_οδηγού>,"projectId":<id_project>,"shift":"<ωράριο ή κενό>","days":"<ημέρες ή κενό>","removeProjectId":<id_παλιού_project_ή_null>}]
+ΑΝ Ο ΧΡΗΣΤΗΣ ΠΕΡΙΓΡΑΦΕΙ ΤΙΣ ΠΡΑΓΜΑΤΙΚΕΣ ΩΡΕΣ ΠΟΥ ΔΟΥΛΕΨΕ ένας οδηγός μια συγκεκριμένη μέρα (π.χ. "δούλεψε 09:00-12:00 αντί για το κανονικό του ωράριο", "έφυγε νωρίτερα", "έκανε υπερωρία μέχρι τις 20:00", "δούλεψε μόνο 3 ώρες"), υπολόγισε τις ΠΡΑΓΜΑΤΙΚΕΣ ώρες εργασίας εκείνης της μέρας (όχι το προγραμματισμένο ωράριο) και πρόσθεσε ΣΤΟ ΤΕΛΟΣ μία γραμμή ΑΚΡΙΒΩΣ σε αυτή τη μορφή:
+[ACTION:{"type":"log_hours","driverId":<id>,"hours":<αριθμός_ωρών>,"projectId":<id_project_ή_null>,"note":"<σύντομη περιγραφή, π.χ. 09:00-12:00 αντί για 09:00-17:00>"}]
+Αν ο χρήστης αναφέρει προηγούμενη ημερομηνία γι' αυτή την καταγραφή, βάλε ΚΑΙ τη γραμμή [LOGDATE:YYYY-MM-DD] όπως παραπάνω.
 Αν δεν ζητείται καμία αλλαγή, ΜΗΝ βάζεις καμία ACTION γραμμή.`;
   }, [drivers, assignments]);
 
@@ -409,12 +442,16 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
               if (action.field === "status" && action.value === "active") {
                 extraFields = { terminated_date: null, terminated_reason: null };
               }
-              setDrivers(prev => prev.map(d => d.id === action.id ? {...d, [action.field]: action.value, ...extraFields} : d));
-              supabase.from('drivers').update({ [action.field]: action.value, ...extraFields }).eq('id', action.id).then(() => {});
+              let coercedValue = action.value;
+              if (action.field === "contract_hours_week") coercedValue = parseInt(action.value, 10) || 40;
+              setDrivers(prev => prev.map(d => d.id === action.id ? {...d, [action.field]: coercedValue, ...extraFields} : d));
+              supabase.from('drivers').update({ [action.field]: coercedValue, ...extraFields }).eq('id', action.id).then(() => {});
               actionDriverId = action.id;
               if (action.field === "status") {
                 const label = action.value === "terminated" ? "Αποχώρησε/Απολύθηκε" : action.value === "absent" ? "Απών" : "Ενεργός";
                 notify(`Status οδηγού: ${label} ✓`, "success");
+              } else if (action.field === "contract_hours_week") {
+                notify(`Σύμβαση ενημερώθηκε: ${coercedValue} ώρες/βδομάδα ✓`, "success");
               } else {
                 notify("Ενημέρωση οδηγού καταχωρήθηκε ✓","success");
               }
@@ -431,6 +468,16 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
             actionDriverId = action.driverId;
             notify("Ανάθεση οδηγού καταχωρήθηκε ✓","success");
           }
+          if (action.type === "log_hours") {
+            const detectedHours = detectHoursFromText(txt);
+            const finalHours = (detectedHours!==null && detectedHours!==undefined) ? detectedHours : (parseFloat(action.hours) || 0);
+            const finalDate = customLogDate || new Date().toISOString().slice(0,10);
+            const entry = { driverId:action.driverId, date:finalDate, projectId:action.projectId||null, hours:finalHours, note:action.note||txt };
+            setDailyHours(prev => [entry, ...prev]);
+            supabase.from('daily_hours').insert({ driverid:action.driverId, date:finalDate, projectid:action.projectId||null, hours:finalHours, note:action.note||txt }).then(() => {});
+            actionDriverId = action.driverId;
+            notify(`Καταγράφηκαν ${finalHours} ώρες (${finalDate}) ✓`, "success");
+          }
         } catch(err) {}
       }
       setMessages(p=>[...p, {role:"assistant", text:cleanText}]);
@@ -440,6 +487,7 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
       ]).then(() => {});
       const lo=txt.toLowerCase();
       if (lo.includes("απολύ")||lo.includes("απολυ")||lo.includes("παραιτ")||lo.includes("αποχώρησ")||lo.includes("αποχωρησ")) addLog(txt,"terminated",actionDriverId,customLogDate);
+      else if (actionMatch && actionMatch[1] && actionMatch[1].includes('"log_hours"')) addLog(txt,"hours",actionDriverId,customLogDate);
       else if (lo.includes("απουσί")||lo.includes("απών")) addLog(txt,"absence",actionDriverId,customLogDate);
       else if (lo.includes("άδεια")||lo.includes("αδεια")) addLog(txt,"leave",actionDriverId,customLogDate);
       else if (lo.includes("αντικατάστα")) addLog(txt,"substitution",actionDriverId,customLogDate);
@@ -573,7 +621,7 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
             <div style={{fontSize:11,fontWeight:700,letterSpacing:2,color:"#445",textTransform:"uppercase",marginBottom:10,marginTop:16}}>Πρόσφατες Μεταβολές</div>
             {log.slice(0,5).map(l=>(
               <div key={l.id} style={{display:"flex",gap:10,alignItems:"flex-start",background:"#0d1428",border:"1px solid #1e2a4a",borderRadius:10,padding:"10px 12px",marginBottom:8}}>
-                <div style={{width:8,height:8,borderRadius:"50%",flexShrink:0,marginTop:5,background:l.type==="absence"?"#ff6b6b":l.type==="substitution"?"#f5c518":l.type==="assignment"?"#a78bfa":l.type==="leave"?"#00e5a0":l.type==="terminated"?"#888":"#5b8cff"}}/>
+                <div style={{width:8,height:8,borderRadius:"50%",flexShrink:0,marginTop:5,background:l.type==="absence"?"#ff6b6b":l.type==="substitution"?"#f5c518":l.type==="assignment"?"#a78bfa":l.type==="leave"?"#00e5a0":l.type==="terminated"?"#888":l.type==="hours"?"#5bffcf":"#5b8cff"}}/>
                 <div>
                   <div style={{fontSize:13,color:"#b0b8d0",lineHeight:1.4}}>{l.text}</div>
                   <div style={{fontSize:11,color:"#445",marginTop:3}}>{l.ts}</div>
@@ -617,6 +665,7 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
                       {driversView!=="archived" && (pNames.length>0 ? pNames.map((n,i)=><div key={i} style={{...S.cardSub,color:"#5b8cff"}}>{n} · {asgn[i]?.shift}</div>) : <div style={{...S.cardSub,color:"#445"}}>Χωρίς project</div>)}
                       <div style={S.cardSub}>{d.moto} · {d.motoType==="own"?"Ιδιόκτητο":"Εταιρικό"} · {d.area||"—"}</div>
                       {d.phone && <div style={S.cardSub}>📞 {d.phone}</div>}
+                      {driversView!=="archived" && <div style={{...S.cardSub,color:"#a78bfa"}}>📄 Σύμβαση: {d.contract_hours_week||40} ώρες/βδομάδα</div>}
                       {d.status==="terminated" && (
                         <div style={{...S.cardSub,color:"#aaa",marginTop:2}}>
                           🗄 Αποχώρησε: {d.terminated_date || "—"}{d.terminated_reason ? ` · ${d.terminated_reason}` : ""}
@@ -722,8 +771,8 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
           <div style={S.view}>
             <div style={{fontSize:20,fontWeight:800,marginBottom:16}}>Αρχείο Μεταβολών</div>
             {log.map(l=>{
-              const c=l.type==="absence"?"#ff6b6b":l.type==="substitution"?"#f5c518":l.type==="assignment"?"#a78bfa":l.type==="leave"?"#00e5a0":l.type==="terminated"?"#888":"#5b8cff";
-              const label = l.type==="absence"?"Απουσία":l.type==="substitution"?"Αντικατάσταση":l.type==="assignment"?"Μεταφορά/Ανάθεση":l.type==="leave"?"Άδεια":l.type==="terminated"?"Αποχώρηση":"Σύστημα";
+              const c=l.type==="absence"?"#ff6b6b":l.type==="substitution"?"#f5c518":l.type==="assignment"?"#a78bfa":l.type==="leave"?"#00e5a0":l.type==="terminated"?"#888":l.type==="hours"?"#5bffcf":"#5b8cff";
+              const label = l.type==="absence"?"Απουσία":l.type==="substitution"?"Αντικατάσταση":l.type==="assignment"?"Μεταφορά/Ανάθεση":l.type==="leave"?"Άδεια":l.type==="terminated"?"Αποχώρηση":l.type==="hours"?"Καταγραφή Ωρών":"Σύστημα";
               return (
                 <div key={l.id} style={S.card}>
                   <div style={{display:"flex",gap:10}}>
