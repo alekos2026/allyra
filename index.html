@@ -277,8 +277,14 @@ function App() {
 
   const notify = (text, type="info") => { setNotif({text,type}); setTimeout(()=>setNotif(null),4000); };
 
-  const addLog = (text, type, driverId=null) => {
-    const ts = new Date().toLocaleString("el-GR");
+  const addLog = (text, type, driverId=null, customDate=null) => {
+    let ts;
+    if (customDate) {
+      const [y,m,dd] = customDate.split("-");
+      ts = `${parseInt(dd)}/${parseInt(m)}/${y} (καταχωρήθηκε αναδρομικά)`;
+    } else {
+      ts = new Date().toLocaleString("el-GR");
+    }
     const newEntry = {id:Date.now(), ts, type, text, driverId};
     setLog(p=>[newEntry,...p]);
     supabase.from('log').insert({ ts, type, text, driverid:driverId }).then(() => {});
@@ -289,6 +295,8 @@ function App() {
     const todayStr = today.toLocaleDateString("el-GR", { weekday:"long", year:"numeric", month:"long", day:"numeric" });
     const tomorrowStr = new Date(today.getTime()+86400000).toLocaleDateString("el-GR");
     const dayAfterStr = new Date(today.getTime()+2*86400000).toLocaleDateString("el-GR");
+    const yesterdayStr = new Date(today.getTime()-86400000).toLocaleDateString("el-GR");
+    const dayBeforeStr = new Date(today.getTime()-2*86400000).toLocaleDateString("el-GR");
 
     const dl = drivers.map(d => {
       const asgn = assignments.filter(a=>a.driverId===d.id);
@@ -302,7 +310,7 @@ function App() {
     }).join("\n");
 
     return `Είσαι η ALLYRA, ψηφιακή AI γραμματέας courier εταιρείας, μόνο ελληνικά. Χρήστης: Alex (διευθυντής).
-ΣΗΜΕΡΑ είναι: ${todayStr} (${today.toLocaleDateString("el-GR")}). ΑΥΡΙΟ είναι: ${tomorrowStr}. ΜΕΘΑΥΡΙΟ είναι: ${dayAfterStr}.
+ΣΗΜΕΡΑ είναι: ${todayStr} (${today.toLocaleDateString("el-GR")}). ΑΥΡΙΟ είναι: ${tomorrowStr}. ΜΕΘΑΥΡΙΟ είναι: ${dayAfterStr}. ΧΘΕΣ ήταν: ${yesterdayStr}. ΠΡΟΧΘΕΣ ήταν: ${dayBeforeStr}.
 ΟΔΗΓΟΙ(${drivers.length}):
 ${dl}
 PROJECTS(ενεργά):
@@ -310,6 +318,9 @@ ${pl}
 RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κυρ€9.30. Ιδιόκτ+€1.20. Εργολάβος:€9.50(δικό τους)/€8.50(δικό μας).
 Απάντα σύντομα (max 4 προτάσεις).
 ΑΝ Ο ΧΡΗΣΤΗΣ ΑΝΑΦΕΡΕΙ "σήμερα","αύριο" ή "μεθαύριο", ΧΡΗΣΙΜΟΠΟΙΗΣΕ τις παραπάνω πραγματικές ημερομηνίες όταν περιγράφεις την αλλαγή.
+ΑΝ Ο ΧΡΗΣΤΗΣ ΑΝΑΦΕΡΕΙ ΓΙΑ ΤΗΝ ΚΑΤΑΧΩΡΗΣΗ ΜΙΑ ΣΥΓΚΕΚΡΙΜΕΝΗ ΠΡΟΗΓΟΥΜΕΝΗ ΗΜΕΡΟΜΗΝΙΑ Ή ΗΜΕΡΑ (π.χ. "στις 10/7", "χθες", "προχθές", "την Τρίτη", "πριν 3 μέρες"), υπολόγισε τη ΣΩΣΤΗ ημερομηνία σε μορφή YYYY-MM-DD με βάση τη ΣΗΜΕΡΙΝΗ ημερομηνία, και πρόσθεσε ΠΡΙΝ από οποιαδήποτε ACTION γραμμή, μία επιπλέον γραμμή ΑΚΡΙΒΩΣ σε αυτή τη μορφή:
+[LOGDATE:YYYY-MM-DD]
+Αν ο χρήστης ΔΕΝ αναφέρει καμία προηγούμενη ημερομηνία, ΜΗΝ βάζεις καμία LOGDATE γραμμή (θα καταγραφεί αυτόματα με τη σημερινή ημερομηνία/ώρα).
 ΑΝ Ο ΧΡΗΣΤΗΣ ΖΗΤΑΕΙ ΑΛΛΑΓΗ ΣΕ ΟΔΗΓΟ (όνομα, τηλέφωνο, ή status), ΠΡΕΠΕΙ ΠΑΝΤΑ να συμπεριλάβεις ΣΤΟ ΤΕΛΟΣ της απάντησής σου μία γραμμή ΑΚΡΙΒΩΣ σε αυτή τη μορφή, ΧΩΡΙΣ ΝΑ ΡΩΤΑΣ ΕΠΙΒΕΒΑΙΩΣΗ ΠΡΩΤΑ:
 [ACTION:{"type":"update_driver","id":<id>,"field":"<name|phone|status>","value":"<τιμή>"}]
 Το πεδίο status δέχεται ΜΟΝΟ τις τιμές: "active" (ενεργός/επέστρεψε), "absent" (προσωρινή απουσία/άρρωστος/πτώση κλπ), "terminated" (απολύθηκε/παραιτήθηκε/αποχώρησε ΟΡΙΣΤΙΚΑ).
@@ -328,18 +339,24 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
     setInput(""); setThinking(true);
     try {
       const r = await callAllyra(buildPrompt(), currentMsgs, txt);
+      const logDateMatch = r.match(/\[LOGDATE:(\d{4}-\d{2}-\d{2})\]/);
       const actionMatch = r.match(/\[ACTION:(\{.*?\})\]/);
       let cleanText = r;
       let actionDriverId = null;
+      let customLogDate = null;
+      if (logDateMatch) {
+        customLogDate = logDateMatch[1];
+        cleanText = cleanText.replace(logDateMatch[0], "").trim();
+      }
       if (actionMatch) {
-        cleanText = r.replace(actionMatch[0], "").trim();
+        cleanText = cleanText.replace(actionMatch[0], "").trim();
         try {
           const action = JSON.parse(actionMatch[1]);
           if (action.type === "update_driver") {
             let extraFields = {};
             if (action.field === "status" && action.value === "terminated") {
-              const todayIso = new Date().toISOString().slice(0,10);
-              extraFields = { terminated_date: todayIso, terminated_reason: txt };
+              const dateIso = customLogDate || new Date().toISOString().slice(0,10);
+              extraFields = { terminated_date: dateIso, terminated_reason: txt };
             }
             if (action.field === "status" && action.value === "active") {
               extraFields = { terminated_date: null, terminated_reason: null };
@@ -373,12 +390,12 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
         { role:"assistant", text:cleanText }
       ]).then(() => {});
       const lo=txt.toLowerCase();
-      if (lo.includes("απολύ")||lo.includes("απολυ")||lo.includes("παραιτ")||lo.includes("αποχώρησ")||lo.includes("αποχωρησ")) addLog(txt,"terminated",actionDriverId);
-      else if (lo.includes("απουσί")||lo.includes("απών")) addLog(txt,"absence",actionDriverId);
-      else if (lo.includes("άδεια")||lo.includes("αδεια")) addLog(txt,"leave",actionDriverId);
-      else if (lo.includes("αντικατάστα")) addLog(txt,"substitution",actionDriverId);
-      else if (lo.includes("μεταφ")||lo.includes("ανάθεσ")||lo.includes("αναθεσ")) addLog(txt,"assignment",actionDriverId);
-      else if (lo.includes("project")||lo.includes("έργο")) addLog(txt,"project",actionDriverId);
+      if (lo.includes("απολύ")||lo.includes("απολυ")||lo.includes("παραιτ")||lo.includes("αποχώρησ")||lo.includes("αποχωρησ")) addLog(txt,"terminated",actionDriverId,customLogDate);
+      else if (lo.includes("απουσί")||lo.includes("απών")) addLog(txt,"absence",actionDriverId,customLogDate);
+      else if (lo.includes("άδεια")||lo.includes("αδεια")) addLog(txt,"leave",actionDriverId,customLogDate);
+      else if (lo.includes("αντικατάστα")) addLog(txt,"substitution",actionDriverId,customLogDate);
+      else if (lo.includes("μεταφ")||lo.includes("ανάθεσ")||lo.includes("αναθεσ")) addLog(txt,"assignment",actionDriverId,customLogDate);
+      else if (lo.includes("project")||lo.includes("έργο")) addLog(txt,"project",actionDriverId,customLogDate);
     } catch(e) { setMessages(p=>[...p,{role:"assistant",text:"Σφάλμα σύνδεσης."}]); }
     finally { setThinking(false); }
   }, [buildPrompt]);
