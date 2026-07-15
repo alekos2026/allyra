@@ -205,6 +205,49 @@ const scol = s => s==="active"?"#00e5a0":s==="absent"?"#ff6b6b":s==="terminated"
 const slabel = s => s==="active"?"Ενεργός":s==="absent"?"Απών":s==="terminated"?"Αποχώρησε":"—";
 const fmtEur = n => `€${Number(n).toFixed(2)}`;
 
+const WEEKDAYS_EL = {
+  "κυριακη":0,"κυριακή":0,
+  "δευτερα":1,"δευτέρα":1,
+  "τριτη":2,"τρίτη":2,
+  "τεταρτη":3,"τετάρτη":3,
+  "πεμπτη":4,"πέμπτη":4,
+  "παρασκευη":5,"παρασκευή":5,
+  "σαββατο":6,"σάββατο":6,
+};
+
+function detectBackdate(text, refDate) {
+  const t = text.toLowerCase();
+  const today = new Date(refDate.getFullYear(), refDate.getMonth(), refDate.getDate());
+  const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+
+  if (/προχθ[εέ]ς|προχτ[εέ]ς/.test(t)) {
+    return fmt(new Date(today.getTime()-2*86400000));
+  }
+  if (/χθ[εέ]ς|χτ[εέ]ς/.test(t)) {
+    return fmt(new Date(today.getTime()-86400000));
+  }
+  const priorDays = t.match(/πριν\s+(\d+)\s*μ[εέ]ρ/);
+  if (priorDays) {
+    const n = parseInt(priorDays[1],10);
+    return fmt(new Date(today.getTime()-n*86400000));
+  }
+  const dm = t.match(/(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](\d{2,4}))?/);
+  if (dm) {
+    let d=parseInt(dm[1],10), m=parseInt(dm[2],10), y=dm[3]?parseInt(dm[3],10):today.getFullYear();
+    if (y<100) y+=2000;
+    const dt = new Date(y, m-1, d);
+    if (!isNaN(dt.getTime()) && dt.getTime() <= today.getTime()) return fmt(dt);
+  }
+  for (const [name, idx] of Object.entries(WEEKDAYS_EL)) {
+    if (t.includes(name)) {
+      let diff = (today.getDay() - idx + 7) % 7;
+      if (diff === 0) diff = 7;
+      return fmt(new Date(today.getTime() - diff*86400000));
+    }
+  }
+  return null;
+}
+
 function App() {
   const [tab, setTab] = useState("home");
 
@@ -343,11 +386,11 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
       const actionMatch = r.match(/\[ACTION:(\{.*?\})\]/);
       let cleanText = r;
       let actionDriverId = null;
-      let customLogDate = null;
       if (logDateMatch) {
-        customLogDate = logDateMatch[1];
         cleanText = cleanText.replace(logDateMatch[0], "").trim();
       }
+      let customLogDate = detectBackdate(txt, new Date());
+      if (!customLogDate && logDateMatch) customLogDate = logDateMatch[1];
       if (actionMatch) {
         cleanText = cleanText.replace(actionMatch[0], "").trim();
         try {
