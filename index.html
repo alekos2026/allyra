@@ -544,7 +544,12 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
             const match = drivers.find(d => d.name.toLowerCase().includes(raw) || raw.includes(d.name.toLowerCase().split(" ")[0]));
             if (match) driverId = match.id;
           }
-          return { driverId, driverNameRaw: e.driverNameRaw||"", date: e.date||"", hours: e.hours!=null?e.hours:"" };
+          let projectId = null;
+          if (driverId) {
+            const driverAssignments = assignments.filter(a=>a.driverId===driverId);
+            if (driverAssignments.length===1) projectId = driverAssignments[0].projectId;
+          }
+          return { driverId, driverNameRaw: e.driverNameRaw||"", date: e.date||"", hours: e.hours!=null?e.hours:"", projectId };
         });
         setExtractEntries(enriched);
         setExtractOpen(true);
@@ -571,13 +576,25 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
     setExtractEntries(prev => prev.filter((_,i)=>i!==idx));
   };
 
+  const updateGroupDriver = (idxList, newDriverId) => {
+    setExtractEntries(prev => prev.map((e,i) => idxList.includes(i) ? {...e, driverId:newDriverId} : e));
+  };
+
+  const updateGroupProject = (idxList, newProjectId) => {
+    setExtractEntries(prev => prev.map((e,i) => idxList.includes(i) ? {...e, projectId:newProjectId} : e));
+  };
+
+  const addRowToGroup = (driverId, driverNameRaw, projectId) => {
+    setExtractEntries(prev => [...prev, { driverId, driverNameRaw, date:"", hours:"", projectId:projectId||null }]);
+  };
+
   const confirmExtractEntries = () => {
     const valid = extractEntries.filter(e => e.driverId && e.date && e.hours!=="" && !isNaN(parseFloat(e.hours)));
     valid.forEach(e => {
       const hours = parseFloat(e.hours);
-      const entry = { driverId:e.driverId, date:e.date, projectId:null, hours, note:`Από φωτογραφία (${e.driverNameRaw||""})` };
+      const entry = { driverId:e.driverId, date:e.date, projectId:e.projectId||null, hours, note:`Από φωτογραφία (${e.driverNameRaw||""})` };
       setDailyHours(prev => [entry, ...prev]);
-      supabase.from('daily_hours').insert({ driverid:e.driverId, date:e.date, projectid:null, hours, note:entry.note }).then(() => {});
+      supabase.from('daily_hours').insert({ driverid:e.driverId, date:e.date, projectid:e.projectId||null, hours, note:entry.note }).then(() => {});
       addLog(`Καταχώρηση από φωτογραφία: ${drivers.find(d=>d.id===e.driverId)?.name||e.driverNameRaw} — ${hours} ώρες`, "hours", e.driverId, e.date);
     });
     notify(`Καταχωρήθηκαν ${valid.length} εγγραφές ✓`, "success");
@@ -1215,24 +1232,51 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
               <button style={{background:"none",border:"none",color:"#556",cursor:"pointer",fontSize:20}} onClick={()=>{setExtractOpen(false);setExtractEntries([]);}}>✕</button>
             </div>
             <div style={{padding:16,overflowY:"auto"}}>
-              <div style={{fontSize:12,color:"#778",marginBottom:12,lineHeight:1.5}}>Έλεγξε/διόρθωσε πριν καταχωρήσεις. Γραμμές χωρίς επιλεγμένο οδηγό ή ώρες δεν θα καταχωρηθούν.</div>
+              <div style={{fontSize:12,color:"#778",marginBottom:12,lineHeight:1.5}}>Έλεγξε/διόρθωσε πριν καταχωρήσεις. Γραμμές χωρίς επιλεγμένο οδηγό, ημερομηνία ή ώρες δεν θα καταχωρηθούν.</div>
               {extractEntries.length===0 && <div style={{fontSize:13,color:"#445"}}>Καμία εγγραφή.</div>}
-              {extractEntries.map((e,i)=>(
-                <div key={i} style={{...S.card,marginBottom:10}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                    <div style={{fontSize:11,color:"#778"}}>Στη φωτογραφία: "{e.driverNameRaw}"</div>
-                    <button style={{background:"none",border:"none",color:"#ff6b6b",fontSize:14,cursor:"pointer"}} onClick={()=>removeExtractEntry(i)}>✕</button>
-                  </div>
-                  <select style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:8,padding:"8px 10px",color:"#e8eaf6",fontSize:13,fontFamily:"inherit",marginBottom:6}} value={e.driverId||""} onChange={ev=>updateExtractEntry(i,"driverId",parseInt(ev.target.value,10)||null)}>
-                    <option value="">— Επίλεξε οδηγό —</option>
-                    {drivers.filter(d=>d.status!=="terminated").map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
-                  </select>
-                  <div style={{display:"flex",gap:8}}>
-                    <input type="date" style={{flex:1,background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:8,padding:"8px 10px",color:"#e8eaf6",fontSize:13,fontFamily:"inherit"}} value={e.date} onChange={ev=>updateExtractEntry(i,"date",ev.target.value)}/>
-                    <input type="number" step="0.1" placeholder="ώρες" style={{width:80,background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:8,padding:"8px 10px",color:"#e8eaf6",fontSize:13,fontFamily:"inherit"}} value={e.hours} onChange={ev=>updateExtractEntry(i,"hours",ev.target.value)}/>
-                  </div>
-                </div>
-              ))}
+              {(() => {
+                const groups = {};
+                const order = [];
+                extractEntries.forEach((e, idx) => {
+                  const key = e.driverId ? `d-${e.driverId}` : `n-${e.driverNameRaw}`;
+                  if (!groups[key]) { groups[key] = { driverId:e.driverId, driverNameRaw:e.driverNameRaw, projectId:e.projectId||null, idxs:[] }; order.push(key); }
+                  groups[key].idxs.push(idx);
+                });
+                return order.map(key => {
+                  const g = groups[key];
+                  const items = g.idxs.map(idx => ({ idx, ...extractEntries[idx] }));
+                  const totalHours = items.reduce((s,it)=>s+(parseFloat(it.hours)||0),0);
+                  const proj = g.projectId ? PROJECTS.find(p=>p.id===g.projectId) : null;
+                  const cost = proj ? totalHours * (proj.rateDay||0) : null;
+                  return (
+                    <div key={key} style={{...S.card,marginBottom:12}}>
+                      <div style={{fontSize:11,color:"#778",marginBottom:6}}>Στη φωτογραφία: "{g.driverNameRaw}"</div>
+                      <select style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:8,padding:"8px 10px",color:"#e8eaf6",fontSize:13,fontFamily:"inherit",marginBottom:6}} value={g.driverId||""} onChange={ev=>updateGroupDriver(g.idxs, parseInt(ev.target.value,10)||null)}>
+                        <option value="">— Επίλεξε οδηγό —</option>
+                        {drivers.filter(d=>d.status!=="terminated").map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
+                      </select>
+                      <select style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:8,padding:"8px 10px",color:"#e8eaf6",fontSize:13,fontFamily:"inherit",marginBottom:8}} value={g.projectId||""} onChange={ev=>updateGroupProject(g.idxs, parseInt(ev.target.value,10)||null)}>
+                        <option value="">— Χωρίς σύνδεση με project —</option>
+                        {PROJECTS.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                      {items.map(it => (
+                        <div key={it.idx} style={{display:"flex",gap:6,alignItems:"center",marginBottom:6}}>
+                          <input type="date" style={{flex:1,background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:8,padding:"7px 8px",color:"#e8eaf6",fontSize:12,fontFamily:"inherit"}} value={it.date} onChange={ev=>updateExtractEntry(it.idx,"date",ev.target.value)}/>
+                          <input type="number" step="0.1" placeholder="ώρες" style={{width:70,background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:8,padding:"7px 8px",color:"#e8eaf6",fontSize:12,fontFamily:"inherit"}} value={it.hours} onChange={ev=>updateExtractEntry(it.idx,"hours",ev.target.value)}/>
+                          <button style={{background:"none",border:"none",color:"#ff6b6b",fontSize:14,cursor:"pointer",flexShrink:0}} onClick={()=>removeExtractEntry(it.idx)}>✕</button>
+                        </div>
+                      ))}
+                      <button style={{background:"none",border:"none",color:"#5b8cff",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0,marginBottom:8}} onClick={()=>addRowToGroup(g.driverId, g.driverNameRaw, g.projectId)}>
+                        + Προσθήκη ημέρας
+                      </button>
+                      <div style={{borderTop:"1px solid #1e2a4a",paddingTop:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <div style={{fontSize:13,fontWeight:700,color:"#e8eaf6"}}>Σύνολο: {totalHours.toFixed(2)} ώρες</div>
+                        {cost!==null && <div style={{fontSize:13,fontWeight:700,color:"#00e5a0"}}>≈ {fmtEur(cost)}</div>}
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
               <button style={{width:"100%",background:"#00e5a0",border:"none",borderRadius:12,padding:"12px",fontSize:14,fontWeight:800,color:"#0a0f1e",cursor:"pointer",fontFamily:"inherit",marginTop:8}} onClick={confirmExtractEntries}>
                 ✅ Καταχώρηση όλων
               </button>
