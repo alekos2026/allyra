@@ -248,6 +248,23 @@ function detectBackdate(text, refDate) {
   return null;
 }
 
+function renderChatText(text) {
+  const lines = (text||"").split("\n");
+  return lines.map((line, li) => {
+    const segments = line.split(/(\*\*[^*]+\*\*)/g).filter(s => s !== "");
+    return (
+      <div key={li} style={{minHeight: line===""?8:undefined}}>
+        {segments.map((seg, si) => {
+          if (seg.startsWith("**") && seg.endsWith("**") && seg.length>4) {
+            return <strong key={si}>{seg.slice(2,-2)}</strong>;
+          }
+          return <span key={si}>{seg}</span>;
+        })}
+      </div>
+    );
+  });
+}
+
 function detectHoursFromText(text) {
   const t = text.toLowerCase();
   const rangeMatch = t.match(/(\d{1,2}):(\d{2})\s*(?:-|έως|ως|μέχρι)\s*(\d{1,2}):(\d{2})/);
@@ -477,18 +494,20 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
       }
 
       const logDateMatch = workingText.match(/\[LOGDATE:(\d{4}-\d{2}-\d{2})\]/);
-      const actionMatch = workingText.match(/\[ACTION:(\{.*?\})\]/);
+      const actionMatches = [...workingText.matchAll(/\[ACTION:(\{.*?\})\]/g)];
       let cleanText = workingText;
       let actionDriverId = null;
+      let hadLogHoursAction = false;
       if (logDateMatch) {
         cleanText = cleanText.replace(logDateMatch[0], "").trim();
       }
       let customLogDate = detectBackdate(txt, new Date());
       if (!customLogDate && logDateMatch) customLogDate = logDateMatch[1];
-      if (actionMatch) {
+      for (const actionMatch of actionMatches) {
         cleanText = cleanText.replace(actionMatch[0], "").trim();
         try {
           const action = JSON.parse(actionMatch[1]);
+          if (action.type === "log_hours") hadLogHoursAction = true;
           if (action.type === "update_driver") {
             const isBackdatedTemporary = customLogDate && action.field === "status" && (action.value === "absent");
             if (isBackdatedTemporary) {
@@ -564,7 +583,7 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
       ]).then(() => {});
       const lo=txt.toLowerCase();
       if (lo.includes("απολύ")||lo.includes("απολυ")||lo.includes("παραιτ")||lo.includes("αποχώρησ")||lo.includes("αποχωρησ")) addLog(txt,"terminated",actionDriverId,customLogDate);
-      else if (actionMatch && actionMatch[1] && actionMatch[1].includes('"log_hours"')) addLog(txt,"hours",actionDriverId,customLogDate);
+      else if (hadLogHoursAction) addLog(txt,"hours",actionDriverId,customLogDate);
       else if (lo.includes("απουσί")||lo.includes("απών")) addLog(txt,"absence",actionDriverId,customLogDate);
       else if (lo.includes("άδεια")||lo.includes("αδεια")) addLog(txt,"leave",actionDriverId,customLogDate);
       else if (lo.includes("αντικατάστα")) addLog(txt,"substitution",actionDriverId,customLogDate);
@@ -1248,7 +1267,7 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
             {messages.map((m,i)=>(
               <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}>
                 <div style={{...S.bubble,background:m.role==="user"?"#00e5a0":"#1a2540",color:m.role==="user"?"#0a0f1e":"#e8eaf6",borderRadius:m.role==="user"?"18px 18px 4px 18px":"18px 18px 18px 4px"}}>
-                  {m.text}
+                  {renderChatText(m.text)}
                 </div>
               </div>
             ))}
