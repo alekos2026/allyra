@@ -288,6 +288,15 @@ function App() {
     fetchAssignments();
   }, []);
 
+  const [partners, setPartners] = useState(PARTNERS);
+  useEffect(() => {
+    async function fetchPartners() {
+      const { data, error } = await supabase.from('partners').select('*').order('id');
+      if (!error && data && data.length > 0) setPartners(data);
+    }
+    fetchPartners();
+  }, []);
+
   const [log, setLog] = useState([
     { id:1, ts:"2026-07-01 09:00", type:"system", text:"ALLYRA v4 — 60 οδηγοί, 27 projects, 14 συνεργάτες.", driverId:null },
     { id:2, ts:"2026-06-30 17:00", type:"project", text:"Goodys Π.Φάληρο — Διακοπή project.", driverId:null },
@@ -400,12 +409,16 @@ function App() {
       return `- ${p.name}|id:${p.id}|${p.address||"—"}|${rateStr}|Οδηγοί:${pD||"—"}`;
     }).join("\n");
 
+    const prl = partners.map(p => `- ${p.name}|id:${p.id}|${p.role}|€${p.rate}/ώρα|${p.notes||"—"}`).join("\n");
+
     return `Είσαι η ALLYRA, ψηφιακή AI γραμματέας courier εταιρείας, μόνο ελληνικά. Χρήστης: Alex (διευθυντής).
 ΣΗΜΕΡΑ είναι: ${todayStr} (${today.toLocaleDateString("el-GR")}). ΑΥΡΙΟ είναι: ${tomorrowStr}. ΜΕΘΑΥΡΙΟ είναι: ${dayAfterStr}. ΧΘΕΣ ήταν: ${yesterdayStr}. ΠΡΟΧΘΕΣ ήταν: ${dayBeforeStr}.
 ΟΔΗΓΟΙ(${drivers.length}):
 ${dl}
 PROJECTS(ενεργά):
 ${pl}
+ΣΥΝΕΡΓΑΤΕΣ/ΕΡΓΟΛΑΒΟΙ(${partners.length}):
+${prl}
 RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κυρ€9.30. Ιδιόκτ+€1.20. Εργολάβος:€9.50(δικό τους)/€8.50(δικό μας).
 Απάντα σύντομα (max 4 προτάσεις).
 ΑΝ Ο ΧΡΗΣΤΗΣ ΑΝΑΦΕΡΕΙ "σήμερα","αύριο" ή "μεθαύριο", ΧΡΗΣΙΜΟΠΟΙΗΣΕ τις παραπάνω πραγματικές ημερομηνίες όταν περιγράφεις την αλλαγή.
@@ -429,8 +442,13 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
 ΣΗΜΑΝΤΙΚΟ: Η απάντησή σου ΠΡΕΠΕΙ να είναι ΠΟΛΥ ΣΥΝΤΟΜΗ — max 1-2 προτάσεις περίληψη (πόσες γραμμές/ονόματα διάβασες), ΧΩΡΙΣ αναλυτικούς πίνακες ή εκτενείς εξηγήσεις στο κείμενο (αυτά θα φανούν ήδη στο παράθυρο επιβεβαίωσης). Μην επαναλαμβάνεις όλα τα δεδομένα σε μορφή πίνακα μέσα στο κείμενο της απάντησης. Μετά βάλε ΥΠΟΧΡΕΩΤΙΚΑ στο ΑΠΟΛΥΤΟ ΤΕΛΟΣ της απάντησης (χωρίς να ακολουθεί τίποτα άλλο μετά) μία γραμμή ΑΚΡΙΒΩΣ σε αυτή τη μορφή:
 [EXTRACT:{"entries":[{"driverId":<id_ή_null>,"driverNameRaw":"<όνομα όπως γράφτηκε στη φωτογραφία>","date":"YYYY-MM-DD","hours":<αριθμός>}]}]
 Αν η φωτογραφία δεν δείχνει πρόγραμμα/ωράριο/παρουσιολόγιο εργασίας, ΜΗΝ βάζεις καμία EXTRACT γραμμή.
+ΑΝ Ο ΧΡΗΣΤΗΣ ΖΗΤΑΕΙ ΠΡΟΣΘΗΚΗ ΝΕΟΥ ΣΥΝΕΡΓΑΤΗ/ΕΡΓΟΛΑΒΟΥ/ΟΔΗΓΟΥ ΣΥΝΕΡΓΑΤΗ (π.χ. "πρόσθεσε νέο συνεργάτη Χ", "ήρθε νέος οδηγός του Μητούδη ονόματι Χ"), ΠΡΕΠΕΙ ΠΑΝΤΑ να συμπεριλάβεις ΣΤΟ ΤΕΛΟΣ μία γραμμή ΑΚΡΙΒΩΣ σε αυτή τη μορφή:
+[ACTION:{"type":"add_partner","name":"<όνομα>","role":"<ρόλος, π.χ. Οδηγός Μητούδη ή Εξωτερικός Συνεργάτης>","rate":<τιμή_ανά_ώρα_αριθμός>,"notes":"<σημειώσεις ή κενό>"}]
+Αν δεν δοθεί τιμή/ρόλος, χρησιμοποίησε λογική προεπιλογή βάσει παρόμοιων υπαρχόντων συνεργατών.
+ΑΝ Ο ΧΡΗΣΤΗΣ ΖΗΤΑΕΙ ΑΛΛΑΓΗ ΣΕ ΥΠΑΡΧΟΝΤΑ ΣΥΝΕΡΓΑΤΗ (όνομα, ρόλος, τιμή, σημειώσεις), ΠΡΕΠΕΙ ΠΑΝΤΑ να συμπεριλάβεις ΣΤΟ ΤΕΛΟΣ μία γραμμή ΑΚΡΙΒΩΣ σε αυτή τη μορφή:
+[ACTION:{"type":"update_partner","id":<id>,"field":"<name|role|rate|notes>","value":"<τιμή>"}]
 Αν δεν ζητείται καμία αλλαγή, ΜΗΝ βάζεις καμία ACTION γραμμή.`;
-  }, [drivers, assignments]);
+  }, [drivers, assignments, partners]);
 
   const sendMsg = useCallback(async (txt, currentMsgs, imageAttachment=null) => {
     if (!txt.trim() && !imageAttachment) return;
@@ -520,6 +538,22 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
             supabase.from('daily_hours').insert({ driverid:action.driverId, date:finalDate, projectid:action.projectId||null, hours:finalHours, note:action.note||txt }).then(() => {});
             actionDriverId = action.driverId;
             notify(`Καταγράφηκαν ${finalHours} ώρες (${finalDate}) ✓`, "success");
+          }
+          if (action.type === "add_partner") {
+            const newPartner = { name:action.name||"—", role:action.role||"Συνεργάτης", rate:parseFloat(action.rate)||9.50, notes:action.notes||"" };
+            supabase.from('partners').insert(newPartner).select().then(({data}) => {
+              if (data && data[0]) setPartners(prev => [...prev, data[0]]);
+            });
+            notify(`Νέος συνεργάτης: ${newPartner.name} ✓`, "success");
+            addLog(`Προσθήκη νέου συνεργάτη: ${newPartner.name} (${newPartner.role})`, "partner", null, customLogDate);
+          }
+          if (action.type === "update_partner") {
+            let coercedValue = action.value;
+            if (action.field === "rate") coercedValue = parseFloat(action.value) || 0;
+            setPartners(prev => prev.map(p => p.id === action.id ? {...p, [action.field]: coercedValue} : p));
+            supabase.from('partners').update({ [action.field]: coercedValue }).eq('id', action.id).then(() => {});
+            notify("Ενημέρωση συνεργάτη καταχωρήθηκε ✓","success");
+            addLog(`Ενημέρωση συνεργάτη (id:${action.id}): ${action.field} → ${coercedValue}`, "partner", null, customLogDate);
           }
         } catch(err) {}
       }
@@ -851,7 +885,7 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
             <div style={{fontSize:11,fontWeight:700,letterSpacing:2,color:"#445",textTransform:"uppercase",marginBottom:10,marginTop:16}}>Πρόσφατες Μεταβολές</div>
             {log.slice(0,5).map(l=>(
               <div key={l.id} style={{display:"flex",gap:10,alignItems:"flex-start",background:"#0d1428",border:"1px solid #1e2a4a",borderRadius:10,padding:"10px 12px",marginBottom:8}}>
-                <div style={{width:8,height:8,borderRadius:"50%",flexShrink:0,marginTop:5,background:l.type==="absence"?"#ff6b6b":l.type==="substitution"?"#f5c518":l.type==="assignment"?"#a78bfa":l.type==="leave"?"#00e5a0":l.type==="terminated"?"#888":l.type==="hours"?"#5bffcf":"#5b8cff"}}/>
+                <div style={{width:8,height:8,borderRadius:"50%",flexShrink:0,marginTop:5,background:l.type==="absence"?"#ff6b6b":l.type==="substitution"?"#f5c518":l.type==="assignment"?"#a78bfa":l.type==="leave"?"#00e5a0":l.type==="terminated"?"#888":l.type==="hours"?"#5bffcf":l.type==="partner"?"#f5c518":"#5b8cff"}}/>
                 <div>
                   <div style={{fontSize:13,color:"#b0b8d0",lineHeight:1.4}}>{l.text}</div>
                   <div style={{fontSize:11,color:"#445",marginTop:3}}>{l.ts}</div>
@@ -978,9 +1012,9 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
 
         {tab==="partners" && (
           <div style={S.view}>
-            <div style={{fontSize:20,fontWeight:800,marginBottom:16}}>Συνεργάτες <span style={{fontSize:12,fontWeight:700,background:"#1e2a4a",color:"#778",padding:"2px 8px",borderRadius:20}}>{PARTNERS.length}</span></div>
+            <div style={{fontSize:20,fontWeight:800,marginBottom:16}}>Συνεργάτες <span style={{fontSize:12,fontWeight:700,background:"#1e2a4a",color:"#778",padding:"2px 8px",borderRadius:20}}>{partners.length}</span></div>
             <div style={{fontSize:11,fontWeight:700,letterSpacing:2,color:"#445",textTransform:"uppercase",marginBottom:8}}>Ομάδα Μητούδη</div>
-            {PARTNERS.filter(p=>p.role.includes("Μητούδη")||p.name==="Μητούδης Δημήτρης").map(p=>(
+            {partners.filter(p=>p.role.includes("Μητούδη")||p.name==="Μητούδης Δημήτρης").map(p=>(
               <div key={p.id} style={S.card}>
                 <div style={{display:"flex",gap:12}}>
                   <div style={{width:42,height:42,borderRadius:"50%",background:"#1a2540",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:"#f5c518",flexShrink:0}}>Μ</div>
@@ -993,7 +1027,7 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
               </div>
             ))}
             <div style={{fontSize:11,fontWeight:700,letterSpacing:2,color:"#445",textTransform:"uppercase",marginBottom:8,marginTop:12}}>Λοιποί Συνεργάτες</div>
-            {PARTNERS.filter(p=>!p.role.includes("Μητούδη")&&p.name!=="Μητούδης Δημήτρης").map(p=>(
+            {partners.filter(p=>!p.role.includes("Μητούδη")&&p.name!=="Μητούδης Δημήτρης").map(p=>(
               <div key={p.id} style={S.card}>
                 <div style={{display:"flex",gap:12}}>
                   <div style={{width:42,height:42,borderRadius:"50%",background:"#1a2540",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,color:"#a78bfa",flexShrink:0}}>Ε</div>
@@ -1012,8 +1046,8 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
           <div style={S.view}>
             <div style={{fontSize:20,fontWeight:800,marginBottom:16}}>Αρχείο Μεταβολών</div>
             {log.map(l=>{
-              const c=l.type==="absence"?"#ff6b6b":l.type==="substitution"?"#f5c518":l.type==="assignment"?"#a78bfa":l.type==="leave"?"#00e5a0":l.type==="terminated"?"#888":l.type==="hours"?"#5bffcf":"#5b8cff";
-              const label = l.type==="absence"?"Απουσία":l.type==="substitution"?"Αντικατάσταση":l.type==="assignment"?"Μεταφορά/Ανάθεση":l.type==="leave"?"Άδεια":l.type==="terminated"?"Αποχώρηση":l.type==="hours"?"Καταγραφή Ωρών":"Σύστημα";
+              const c=l.type==="absence"?"#ff6b6b":l.type==="substitution"?"#f5c518":l.type==="assignment"?"#a78bfa":l.type==="leave"?"#00e5a0":l.type==="terminated"?"#888":l.type==="hours"?"#5bffcf":l.type==="partner"?"#f5c518":"#5b8cff";
+              const label = l.type==="absence"?"Απουσία":l.type==="substitution"?"Αντικατάσταση":l.type==="assignment"?"Μεταφορά/Ανάθεση":l.type==="leave"?"Άδεια":l.type==="terminated"?"Αποχώρηση":l.type==="hours"?"Καταγραφή Ωρών":l.type==="partner"?"Συνεργάτης":"Σύστημα";
               return (
                 <div key={l.id} style={S.card}>
                   <div style={{display:"flex",gap:10}}>
