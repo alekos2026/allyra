@@ -265,6 +265,61 @@ function renderChatText(text) {
   });
 }
 
+function orthodoxEasterDate(year) {
+  const a = year % 4, b = year % 7, c = year % 19;
+  const d = (19*c + 15) % 30;
+  const e = (2*a + 4*b - d + 34) % 7;
+  const month = Math.floor((d + e + 114) / 31);
+  const day = ((d + e + 114) % 31) + 1;
+  const julian = new Date(Date.UTC(year, month-1, day));
+  julian.setUTCDate(julian.getUTCDate() + 13);
+  return julian;
+}
+
+function isGreekHoliday(dateStr) {
+  const d = new Date(dateStr + "T00:00:00Z");
+  const year = d.getUTCFullYear();
+  const md = `${d.getUTCMonth()+1}-${d.getUTCDate()}`;
+  const fixed = ["1-1","1-6","3-25","5-1","8-15","10-28","12-25","12-26"];
+  if (fixed.includes(md)) return true;
+  const easter = orthodoxEasterDate(year);
+  const dayMs = 86400000;
+  const offsets = [-48, 0, 1, 50];
+  for (const off of offsets) {
+    const hd = new Date(easter.getTime() + off*dayMs);
+    if (hd.getUTCFullYear()===d.getUTCFullYear() && hd.getUTCMonth()===d.getUTCMonth() && hd.getUTCDate()===d.getUTCDate()) return true;
+  }
+  return false;
+}
+
+function timeToMinutes(t) {
+  const m = (t||"").match(/(\d{1,2}):(\d{2})/);
+  if (!m) return null;
+  return parseInt(m[1],10)*60 + parseInt(m[2],10);
+}
+
+function computeShiftBreakdown(dateStr, startTime, endTime) {
+  const startMin = timeToMinutes(startTime);
+  const endMinRaw = timeToMinutes(endTime);
+  if (startMin===null || endMinRaw===null) return null;
+  let endMin = endMinRaw;
+  if (endMin <= startMin) endMin += 24*60;
+  const totalMin = endMin - startMin;
+  const NIGHT_START = 22*60;
+  let regularMin = 0, nightMin = 0;
+  for (let m = startMin; m < endMin; m += 1) {
+    const wrapped = m % (24*60);
+    if (wrapped >= NIGHT_START) nightMin++; else regularMin++;
+  }
+  const dow = new Date(dateStr+"T00:00:00Z").getUTCDay();
+  const isSpecial = dow===0 || isGreekHoliday(dateStr);
+  const hours = n => Math.round((n/60)*100)/100;
+  if (isSpecial) {
+    return { normal:0, night:0, sunday:hours(regularMin), sundayNight:hours(nightMin), total:hours(totalMin) };
+  }
+  return { normal:hours(regularMin), night:hours(nightMin), sunday:0, sundayNight:0, total:hours(totalMin) };
+}
+
 function detectHoursFromText(text) {
   const t = text.toLowerCase();
   const rangeMatch = t.match(/(\d{1,2}):(\d{2})\s*(?:-|έως|ως|μέχρι)\s*(\d{1,2}):(\d{2})/);
@@ -463,9 +518,9 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
 ΑΝ Ο ΧΡΗΣΤΗΣ ΠΕΡΙΓΡΑΦΕΙ ΤΙΣ ΠΡΑΓΜΑΤΙΚΕΣ ΩΡΕΣ ΠΟΥ ΔΟΥΛΕΨΕ ένας οδηγός μια συγκεκριμένη μέρα (π.χ. "δούλεψε 09:00-12:00 αντί για το κανονικό του ωράριο", "έφυγε νωρίτερα", "έκανε υπερωρία μέχρι τις 20:00", "δούλεψε μόνο 3 ώρες"), υπολόγισε τις ΠΡΑΓΜΑΤΙΚΕΣ ώρες εργασίας εκείνης της μέρας (όχι το προγραμματισμένο ωράριο) και πρόσθεσε ΣΤΟ ΤΕΛΟΣ μία γραμμή ΑΚΡΙΒΩΣ σε αυτή τη μορφή:
 [ACTION:{"type":"log_hours","driverId":<id>,"hours":<αριθμός_ωρών>,"projectId":<id_project_ή_null>,"note":"<σύντομη περιγραφή, π.χ. 09:00-12:00 αντί για 09:00-17:00>"}]
 Αν ο χρήστης αναφέρει προηγούμενη ημερομηνία γι' αυτή την καταγραφή, βάλε ΚΑΙ τη γραμμή [LOGDATE:YYYY-MM-DD] όπως παραπάνω.
-ΑΝ Ο ΧΡΗΣΤΗΣ ΣΟΥ ΣΤΕΙΛΕΙ ΦΩΤΟΓΡΑΦΙΑ με πρόγραμμα/παρουσιολόγιο ωρών εργασίας, διάβασέ την προσεκτικά και εξήγαγε για κάθε γραμμή: όνομα εργαζομένου (όπως γράφεται στη φωτογραφία, ακόμα κι αν είναι δυσανάγνωστο ή συντομογραφία), ημερομηνία (YYYY-MM-DD· αν η φωτογραφία δείχνει μόνο ημέρα/μήνα χωρίς έτος, υπόθεσε το τρέχον έτος), και ώρες εργασίας (αριθμός· αν βλέπεις ώρα εισόδου-εξόδου, υπολόγισε τη διαφορά). Προσπάθησε να ταιριάξεις το όνομα με έναν από τους παραπάνω ΟΔΗΓΟΥΣ ελέγχοντας ΚΑΙ το επώνυμο ΚΑΙ το μικρό όνομα (π.χ. αν κάποιος γράφεται μόνο με το μικρό του όνομα ή παραλλαγή του), και βάλε το σωστό id αν είσαι αρκετά σίγουρος, αλλιώς άφησε "driverId":null (μην μαντεύεις αν δεν είσαι σίγουρος). Αν ο ίδιος άνθρωπος εμφανίζεται με ελαφρώς διαφορετική γραφή σε διαφορετικές γραμμές (π.χ. λόγω OCR), αντιμετώπισέ τον ως τον ΙΔΙΟ οδηγό.
+ΑΝ Ο ΧΡΗΣΤΗΣ ΣΟΥ ΣΤΕΙΛΕΙ ΦΩΤΟΓΡΑΦΙΑ με πρόγραμμα/παρουσιολόγιο ωρών εργασίας, διάβασέ την προσεκτικά και εξήγαγε για κάθε γραμμή: όνομα εργαζομένου (όπως γράφεται στη φωτογραφία, ακόμα κι αν είναι δυσανάγνωστο ή συντομογραφία), ημερομηνία (YYYY-MM-DD· αν η φωτογραφία δείχνει μόνο ημέρα/μήνα χωρίς έτος, υπόθεσε το τρέχον έτος), και ΩΡΑ ΕΙΣΟΔΟΥ και ΩΡΑ ΕΞΟΔΟΥ (μορφή HH:MM). Αν η φωτογραφία δείχνει μόνο σύνολο ωρών χωρίς ώρα εισόδου/εξόδου, άφησε τα κενά και βάλε μόνο το "hours". Προσπάθησε να ταιριάξεις το όνομα με έναν από τους παραπάνω ΟΔΗΓΟΥΣ ελέγχοντας ΚΑΙ το επώνυμο ΚΑΙ το μικρό όνομα (π.χ. αν κάποιος γράφεται μόνο με το μικρό του όνομα ή παραλλαγή του), και βάλε το σωστό id αν είσαι αρκετά σίγουρος, αλλιώς άφησε "driverId":null (μην μαντεύεις αν δεν είσαι σίγουρος). Αν ο ίδιος άνθρωπος εμφανίζεται με ελαφρώς διαφορετική γραφή σε διαφορετικές γραμμές (π.χ. λόγω OCR), αντιμετώπισέ τον ως τον ΙΔΙΟ οδηγό.
 ΣΗΜΑΝΤΙΚΟ: Η απάντησή σου ΠΡΕΠΕΙ να είναι ΠΟΛΥ ΣΥΝΤΟΜΗ — max 1-2 προτάσεις περίληψη (πόσες γραμμές/ονόματα διάβασες), ΧΩΡΙΣ αναλυτικούς πίνακες ή εκτενείς εξηγήσεις στο κείμενο (αυτά θα φανούν ήδη στο παράθυρο επιβεβαίωσης). Μην επαναλαμβάνεις όλα τα δεδομένα σε μορφή πίνακα μέσα στο κείμενο της απάντησης. ΑΥΤΟ ΕΙΝΑΙ ΚΡΙΣΙΜΟ: αν αναφέρεις στο κείμενο ότι διάβασες οποιεσδήποτε εγγραφές/ονόματα/ημερομηνίες από φωτογραφία, ΠΡΕΠΕΙ ΠΑΝΤΑ, ΧΩΡΙΣ ΚΑΜΙΑ ΕΞΑΙΡΕΣΗ, να συμπεριλάβεις την παρακάτω γραμμή EXTRACT με ΟΛΕΣ τις εγγραφές που ανέφερες (ίδιος αριθμός εγγραφών με αυτόν που δήλωσες στο κείμενο) — ποτέ μην αναφέρεις αριθμό εγγραφών στο κείμενο χωρίς να τις συμπεριλάβεις ΚΑΙ στην EXTRACT γραμμή. Μετά βάλε ΥΠΟΧΡΕΩΤΙΚΑ στο ΑΠΟΛΥΤΟ ΤΕΛΟΣ της απάντησης (χωρίς να ακολουθεί τίποτα άλλο μετά) μία γραμμή ΑΚΡΙΒΩΣ σε αυτή τη μορφή:
-[EXTRACT:{"entries":[{"driverId":<id_ή_null>,"driverNameRaw":"<όνομα όπως γράφτηκε στη φωτογραφία>","date":"YYYY-MM-DD","hours":<αριθμός>}]}]
+[EXTRACT:{"entries":[{"driverId":<id_ή_null>,"driverNameRaw":"<όνομα όπως γράφτηκε στη φωτογραφία>","date":"YYYY-MM-DD","startTime":"HH:MM ή κενό","endTime":"HH:MM ή κενό","hours":<αριθμός ή null αν έχεις startTime/endTime>}]}]
 Αν η φωτογραφία δεν δείχνει πρόγραμμα/ωράριο/παρουσιολόγιο εργασίας, ΜΗΝ βάζεις καμία EXTRACT γραμμή.
 ΑΝ Ο ΧΡΗΣΤΗΣ ΖΗΤΑΕΙ ΠΡΟΣΘΗΚΗ ΝΕΟΥ ΣΥΝΕΡΓΑΤΗ/ΕΡΓΟΛΑΒΟΥ/ΟΔΗΓΟΥ ΣΥΝΕΡΓΑΤΗ (π.χ. "πρόσθεσε νέο συνεργάτη Χ", "ήρθε νέος οδηγός του Μητούδη ονόματι Χ"), ΠΡΕΠΕΙ ΠΑΝΤΑ να συμπεριλάβεις ΣΤΟ ΤΕΛΟΣ μία γραμμή ΑΚΡΙΒΩΣ σε αυτή τη μορφή:
 [ACTION:{"type":"add_partner","name":"<όνομα>","role":"<ρόλος, π.χ. Οδηγός Μητούδη ή Εξωτερικός Συνεργάτης>","rate":<τιμή_ανά_ώρα_αριθμός>,"notes":"<σημειώσεις ή κενό>"}]
@@ -614,7 +669,7 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
             const driverAssignments = assignments.filter(a=>a.driverId===driverId);
             if (driverAssignments.length===1) projectId = driverAssignments[0].projectId;
           }
-          return { driverId, driverNameRaw: e.driverNameRaw||"", date: e.date||"", hours: e.hours!=null?e.hours:"", projectId };
+          return { driverId, driverNameRaw: e.driverNameRaw||"", date: e.date||"", hours: e.hours!=null?e.hours:"", startTime: e.startTime||"", endTime: e.endTime||"", projectId };
         });
         setExtractEntries(enriched);
         setExtractOpen(true);
@@ -667,17 +722,31 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
   };
 
   const addRowToGroup = (driverId, driverNameRaw, projectId) => {
-    setExtractEntries(prev => [...prev, { driverId, driverNameRaw, date:"", hours:"", projectId:projectId||null }]);
+    setExtractEntries(prev => [...prev, { driverId, driverNameRaw, date:"", hours:"", startTime:"", endTime:"", projectId:projectId||null }]);
   };
 
   const confirmExtractEntries = () => {
-    const valid = extractEntries.filter(e => e.driverId && e.date && e.hours!=="" && !isNaN(parseFloat(e.hours)));
+    const valid = extractEntries.filter(e => {
+      const hasTimes = e.startTime && e.endTime;
+      const hasHours = e.hours!=="" && !isNaN(parseFloat(e.hours));
+      return e.driverId && e.date && (hasTimes || hasHours);
+    });
     valid.forEach(e => {
-      const hours = parseFloat(e.hours);
-      const entry = { driverId:e.driverId, date:e.date, projectId:e.projectId||null, hours, note:`Από φωτογραφία (${e.driverNameRaw||""})` };
+      const breakdown = (e.startTime && e.endTime) ? computeShiftBreakdown(e.date, e.startTime, e.endTime) : null;
+      const hours = breakdown ? breakdown.total : parseFloat(e.hours);
+      let noteExtra = "";
+      if (breakdown) {
+        const parts = [];
+        if (breakdown.normal>0) parts.push(`${breakdown.normal} κανονικές`);
+        if (breakdown.night>0) parts.push(`${breakdown.night} νυχτερινές`);
+        if (breakdown.sunday>0) parts.push(`${breakdown.sunday} Κυριακή/αργία`);
+        if (breakdown.sundayNight>0) parts.push(`${breakdown.sundayNight} Κυριακή/αργία+νύχτα`);
+        noteExtra = ` (${e.startTime}-${e.endTime}: ${parts.join(", ")})`;
+      }
+      const entry = { driverId:e.driverId, date:e.date, projectId:e.projectId||null, hours, note:`Από φωτογραφία (${e.driverNameRaw||""})${noteExtra}` };
       setDailyHours(prev => [entry, ...prev]);
-      supabase.from('daily_hours').insert({ driverid:e.driverId, date:e.date, projectid:e.projectId||null, hours, note:entry.note }).then(() => {});
-      addLog(`Καταχώρηση από φωτογραφία: ${drivers.find(d=>d.id===e.driverId)?.name||e.driverNameRaw} — ${hours} ώρες`, "hours", e.driverId, e.date);
+      supabase.from('daily_hours').insert({ driverid:e.driverId, date:e.date, projectid:e.projectId||null, hours, note:entry.note, start_time:e.startTime||null, end_time:e.endTime||null }).then(() => {});
+      addLog(`Καταχώρηση από φωτογραφία: ${drivers.find(d=>d.id===e.driverId)?.name||e.driverNameRaw} — ${hours} ώρες${noteExtra}`, "hours", e.driverId, e.date);
     });
     notify(`Καταχωρήθηκαν ${valid.length} εγγραφές ✓`, "success");
     setExtractOpen(false);
@@ -715,6 +784,15 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
     return 1;
   };
 
+  const mondayOfWeek = (dateObj) => {
+    const d = new Date(dateObj);
+    const day = d.getDay();
+    const diff = day===0 ? -6 : 1-day;
+    d.setDate(d.getDate()+diff);
+    d.setHours(0,0,0,0);
+    return d;
+  };
+
   const computeMonthlyReport = (driverId, monthStr) => {
     const driver = drivers.find(d=>d.id===driverId);
     if (!driver) return null;
@@ -745,10 +823,56 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
     const estimatedTotal = baselineMonthlyHours - absenceHoursLost + hoursDeltaTotal;
     const overtimeEstimate = hourEntryDetails.filter(h=>h.delta>0).reduce((s,h)=>s+h.delta,0);
 
+    // --- Time-of-day category breakdown from logged entries (only these carry granularity) ---
+    let loggedNight=0, loggedSunday=0, loggedSundayNight=0;
+    const entryBreakdowns = monthHoursEntries.map(h => {
+      let b;
+      if (h.start_time && h.end_time) b = computeShiftBreakdown(h.date, h.start_time, h.end_time);
+      else {
+        const dow = new Date(h.date+"T00:00:00Z").getUTCDay();
+        const special = dow===0 || isGreekHoliday(h.date);
+        const hrs = parseFloat(h.hours)||0;
+        b = special ? {normal:0,night:0,sunday:hrs,sundayNight:0,total:hrs} : {normal:hrs,night:0,sunday:0,sundayNight:0,total:hrs};
+      }
+      loggedNight += b.night; loggedSunday += b.sunday; loggedSundayNight += b.sundayNight;
+      return { ...h, breakdown:b };
+    });
+
+    // --- Weekly overtime: compare each week's total (logged + assumed baseline for unlogged weekdays) to contractWeek ---
+    const loggedDatesSet = new Set(monthHoursEntries.map(h=>h.date));
+    const weeks = {};
+    for (let day=1; day<=daysInMonth; day++) {
+      const dateObj = new Date(yy, mm-1, day);
+      const dateStr = `${yy}-${String(mm).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+      const wk = mondayOfWeek(dateObj).toISOString().slice(0,10);
+      if (!weeks[wk]) weeks[wk] = { loggedHours:0, unloggedWeekdays:0 };
+      const dow = dateObj.getDay();
+      if (loggedDatesSet.has(dateStr)) {
+        const dayTotal = entryBreakdowns.filter(e=>e.date===dateStr).reduce((s,e)=>s+e.breakdown.total,0);
+        weeks[wk].loggedHours += dayTotal;
+      } else if (dow>=1 && dow<=5) {
+        weeks[wk].unloggedWeekdays += 1;
+      }
+    }
+    let totalOvertimeHours = 0;
+    Object.values(weeks).forEach(w => {
+      const weekTotal = w.loggedHours + w.unloggedWeekdays*dailyEquivalent;
+      totalOvertimeHours += Math.max(0, weekTotal - contractWeek);
+    });
+
+    const nightHoursForPay = loggedNight;
+    const sundayHoursForPay = loggedSunday + loggedSundayNight;
+    const overtimeHoursForPay = totalOvertimeHours;
+    const normalHoursForPay = Math.max(0, estimatedTotal - overtimeHoursForPay - nightHoursForPay - sundayHoursForPay);
+
+    const rateTable = RATES[driver.motoType] || RATES.company;
+    const payrollCost = normalHoursForPay*rateTable.normal + overtimeHoursForPay*rateTable.overtime + nightHoursForPay*rateTable.night + sundayHoursForPay*rateTable.sunday;
+
     return {
       driver, contractWeek, dailyEquivalent, daysInMonth, baselineMonthlyHours,
       absenceDaysTotal, absenceHoursLost, hourEntryDetails, hoursDeltaTotal,
-      estimatedTotal, overtimeEstimate, monthLogEntries
+      estimatedTotal, overtimeEstimate, monthLogEntries,
+      normalHoursForPay, overtimeHoursForPay, nightHoursForPay, sundayHoursForPay, payrollCost, rateTable
     };
   };
 
@@ -1194,6 +1318,18 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
                         {r.overtimeEstimate>0 && <div style={{fontSize:12,color:"#f5c518",marginTop:4}}>Εκ των οποίων ~{r.overtimeEstimate.toFixed(1)} ώρες υπερωρία (από καταγεγραμμένες μέρες)</div>}
                       </div>
                     </div>
+
+                    <div style={{background:"#0a0f1e",border:"1px solid #00e5a0",borderRadius:12,padding:16,marginBottom:14}}>
+                      <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Ανάλυση Πληρωμής ({r.driver.motoType==="own"?"Ιδιόκτητο":"Εταιρικό"} μηχανάκι)</div>
+                      <div style={{fontSize:13,color:"#778",marginBottom:4}}>Κανονικές: {r.normalHoursForPay.toFixed(1)} ώρες × {fmtEur(r.rateTable.normal)} = {fmtEur(r.normalHoursForPay*r.rateTable.normal)}</div>
+                      {r.overtimeHoursForPay>0 && <div style={{fontSize:13,color:"#f5c518",marginBottom:4}}>Υπερωρία (πάνω από {r.contractWeek}ώρες/βδομάδα): {r.overtimeHoursForPay.toFixed(1)} ώρες × {fmtEur(r.rateTable.overtime)} = {fmtEur(r.overtimeHoursForPay*r.rateTable.overtime)}</div>}
+                      {r.nightHoursForPay>0 && <div style={{fontSize:13,color:"#5b8cff",marginBottom:4}}>Νυχτερινές: {r.nightHoursForPay.toFixed(1)} ώρες × {fmtEur(r.rateTable.night)} = {fmtEur(r.nightHoursForPay*r.rateTable.night)}</div>}
+                      {r.sundayHoursForPay>0 && <div style={{fontSize:13,color:"#ff6b6b",marginBottom:4}}>Κυριακή/Αργία: {r.sundayHoursForPay.toFixed(1)} ώρες × {fmtEur(r.rateTable.sunday)} = {fmtEur(r.sundayHoursForPay*r.rateTable.sunday)}</div>}
+                      <div style={{borderTop:"1px solid #1e2a4a",marginTop:10,paddingTop:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <div style={{fontSize:13,color:"#778"}}>Σύνολο πληρωμής</div>
+                        <div style={{fontSize:24,fontWeight:900,color:"#00e5a0"}}>{fmtEur(r.payrollCost)}</div>
+                      </div>
+                    </div>
                     <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Καταγραφές μήνα ({r.monthLogEntries.length})</div>
                     {r.monthLogEntries.length===0 && <div style={{fontSize:12,color:"#445",marginBottom:10}}>Καμία καταγραφή αυτό το μήνα.</div>}
                     {r.monthLogEntries.map(l=>(
@@ -1338,9 +1474,19 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
                 return order.map(key => {
                   const g = groups[key];
                   const items = g.idxs.map(idx => ({ idx, ...extractEntries[idx] }));
-                  const totalHours = items.reduce((s,it)=>s+(parseFloat(it.hours)||0),0);
                   const proj = g.projectId ? PROJECTS.find(p=>p.id===g.projectId) : null;
-                  const cost = proj ? totalHours * (proj.rateDay||0) : null;
+                  const totals = { normal:0, night:0, sunday:0, sundayNight:0, total:0 };
+                  const itemBreakdowns = items.map(it => {
+                    let b = null;
+                    if (it.startTime && it.endTime) b = computeShiftBreakdown(it.date, it.startTime, it.endTime);
+                    else if (it.hours!=="" && !isNaN(parseFloat(it.hours))) b = { normal:parseFloat(it.hours), night:0, sunday:0, sundayNight:0, total:parseFloat(it.hours) };
+                    if (b) { totals.normal+=b.normal; totals.night+=b.night; totals.sunday+=b.sunday; totals.sundayNight+=b.sundayNight; totals.total+=b.total; }
+                    return b;
+                  });
+                  let cost = null;
+                  if (proj) {
+                    cost = totals.normal*(proj.rateDay||0) + totals.night*(proj.rateNight||proj.rateDay||0) + totals.sunday*(proj.rateSun||proj.rateDay||0) + totals.sundayNight*(proj.rateSunNight||proj.rateSun||proj.rateNight||proj.rateDay||0);
+                  }
                   return (
                     <div key={key} style={{...S.card,marginBottom:12}}>
                       <div style={{fontSize:11,color:"#778",marginBottom:6}}>Στη φωτογραφία: "{g.driverNameRaw}"</div>
@@ -1352,19 +1498,43 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
                         <option value="">— Χωρίς σύνδεση με project —</option>
                         {PROJECTS.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
                       </select>
-                      {items.map(it => (
-                        <div key={it.idx} style={{display:"flex",gap:6,alignItems:"center",marginBottom:6}}>
-                          <input type="date" style={{flex:1,background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:8,padding:"7px 8px",color:"#e8eaf6",fontSize:12,fontFamily:"inherit"}} value={it.date} onChange={ev=>updateExtractEntry(it.idx,"date",ev.target.value)}/>
-                          <input type="number" step="0.1" placeholder="ώρες" style={{width:70,background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:8,padding:"7px 8px",color:"#e8eaf6",fontSize:12,fontFamily:"inherit"}} value={it.hours} onChange={ev=>updateExtractEntry(it.idx,"hours",ev.target.value)}/>
-                          <button style={{background:"none",border:"none",color:"#ff6b6b",fontSize:14,cursor:"pointer",flexShrink:0}} onClick={()=>removeExtractEntry(it.idx)}>✕</button>
+                      {items.map((it,ii) => (
+                        <div key={it.idx} style={{marginBottom:8,paddingBottom:8,borderBottom:ii<items.length-1?"1px solid #1e2a4a":"none"}}>
+                          <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:4}}>
+                            <input type="date" style={{flex:1,background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:8,padding:"7px 8px",color:"#e8eaf6",fontSize:12,fontFamily:"inherit"}} value={it.date} onChange={ev=>updateExtractEntry(it.idx,"date",ev.target.value)}/>
+                            <button style={{background:"none",border:"none",color:"#ff6b6b",fontSize:14,cursor:"pointer",flexShrink:0}} onClick={()=>removeExtractEntry(it.idx)}>✕</button>
+                          </div>
+                          <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                            <input type="time" style={{flex:1,background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:8,padding:"7px 8px",color:"#e8eaf6",fontSize:12,fontFamily:"inherit"}} value={it.startTime||""} onChange={ev=>updateExtractEntry(it.idx,"startTime",ev.target.value)}/>
+                            <span style={{color:"#556",fontSize:12}}>έως</span>
+                            <input type="time" style={{flex:1,background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:8,padding:"7px 8px",color:"#e8eaf6",fontSize:12,fontFamily:"inherit"}} value={it.endTime||""} onChange={ev=>updateExtractEntry(it.idx,"endTime",ev.target.value)}/>
+                            <input type="number" step="0.1" placeholder="ή ώρες" style={{width:64,background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:8,padding:"7px 8px",color:"#e8eaf6",fontSize:12,fontFamily:"inherit"}} value={it.hours} onChange={ev=>updateExtractEntry(it.idx,"hours",ev.target.value)}/>
+                          </div>
+                          {itemBreakdowns[ii] && (it.startTime && it.endTime) && (
+                            <div style={{fontSize:10,color:"#5b8cff",marginTop:3}}>
+                              {itemBreakdowns[ii].normal>0 && `${itemBreakdowns[ii].normal}κ `}
+                              {itemBreakdowns[ii].night>0 && `${itemBreakdowns[ii].night}ν `}
+                              {itemBreakdowns[ii].sunday>0 && `${itemBreakdowns[ii].sunday}Κυρ `}
+                              {itemBreakdowns[ii].sundayNight>0 && `${itemBreakdowns[ii].sundayNight}Κυρ+ν `}
+                              ={itemBreakdowns[ii].total} ώρες
+                            </div>
+                          )}
                         </div>
                       ))}
                       <button style={{background:"none",border:"none",color:"#5b8cff",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0,marginBottom:8}} onClick={()=>addRowToGroup(g.driverId, g.driverNameRaw, g.projectId)}>
                         + Προσθήκη ημέρας
                       </button>
-                      <div style={{borderTop:"1px solid #1e2a4a",paddingTop:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                        <div style={{fontSize:13,fontWeight:700,color:"#e8eaf6"}}>Σύνολο: {totalHours.toFixed(2)} ώρες</div>
-                        {cost!==null && <div style={{fontSize:13,fontWeight:700,color:"#00e5a0"}}>≈ {fmtEur(cost)}</div>}
+                      <div style={{borderTop:"1px solid #1e2a4a",paddingTop:8}}>
+                        <div style={{fontSize:11,color:"#778",marginBottom:4}}>
+                          {totals.normal>0 && `Κανονικές: ${totals.normal.toFixed(2)}  `}
+                          {totals.night>0 && `Νυχτερινές: ${totals.night.toFixed(2)}  `}
+                          {totals.sunday>0 && `Κυριακή/Αργία: ${totals.sunday.toFixed(2)}  `}
+                          {totals.sundayNight>0 && `Κυρ+Νύχτα: ${totals.sundayNight.toFixed(2)}`}
+                        </div>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                          <div style={{fontSize:13,fontWeight:700,color:"#e8eaf6"}}>Σύνολο: {totals.total.toFixed(2)} ώρες</div>
+                          {cost!==null && <div style={{fontSize:13,fontWeight:700,color:"#00e5a0"}}>≈ {fmtEur(cost)}</div>}
+                        </div>
                       </div>
                     </div>
                   );
