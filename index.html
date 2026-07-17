@@ -385,6 +385,13 @@ function App() {
   const fileInputRef = useRef(null);
   const recRef = useRef(null);
   const msgEnd = useRef(null);
+  const textAreaRef = useRef(null);
+
+  useEffect(() => {
+    if (input === "" && textAreaRef.current) {
+      textAreaRef.current.style.height = "auto";
+    }
+  }, [input]);
 
   useEffect(() => { if(msgEnd.current) msgEnd.current.scrollIntoView({behavior:"smooth"}); }, [messages]);
 
@@ -848,7 +855,7 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
     msgs:{flex:1,overflowY:"auto",padding:"12px 14px",display:"flex",flexDirection:"column",gap:8},
     bubble:{maxWidth:"82%",padding:"10px 14px",fontSize:14,lineHeight:1.5,fontWeight:500},
     inputRow:{display:"flex",gap:6,padding:"10px 12px",borderTop:"1px solid #1e2a4a",alignItems:"center"},
-    textInput:{flex:1,background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:30,padding:"10px 16px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",outline:"none"},
+    textInput:{flex:1,background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:18,padding:"10px 16px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",outline:"none",resize:"none",lineHeight:1.4,maxHeight:110,overflowY:"auto"},
     overlay:{position:"fixed",inset:0,background:"#000b",zIndex:500,display:"flex",alignItems:"flex-end"},
     modal:{background:"#0d1428",border:"2px solid #f5c518",borderRadius:"20px 20px 0 0",width:"100%",maxHeight:"88vh",display:"flex",flexDirection:"column"},
   };
@@ -1286,7 +1293,18 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
             <button style={{width:42,height:42,borderRadius:"50%",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"#e8eaf6",flexShrink:0,background:"#1a2540",border:"1px solid #2a3560",fontSize:18}} onClick={()=>fileInputRef.current?.click()}>
               📷
             </button>
-            <input style={S.textInput} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendMsg(input,messages,attachedImage)} placeholder="Γράψε εντολή στα ελληνικά..."/>
+            <textarea
+              ref={textAreaRef}
+              style={S.textInput}
+              value={input}
+              rows={1}
+              onChange={e=>{
+                setInput(e.target.value);
+                e.target.style.height="auto";
+                e.target.style.height=Math.min(e.target.scrollHeight,110)+"px";
+              }}
+              placeholder="Γράψε εντολή στα ελληνικά..."
+            />
             <button style={{width:42,height:42,borderRadius:"50%",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"#e8eaf6",flexShrink:0,background:listening?"#ff6b6b":"#1a2540",border:`1px solid ${listening?"#ff6b6b":"#2a3560"}`,fontSize:18}} onClick={listening?()=>{recRef.current?.stop();setListening(false);}:startListen}>
               {listening?"🔴":"🎙"}
             </button>
