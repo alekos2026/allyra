@@ -600,8 +600,23 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      const base64 = reader.result.split(",")[1];
-      setAttachedImage({ data: base64, mediaType: file.type || "image/jpeg", previewUrl: reader.result });
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 1600;
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) { height = Math.round(height * (maxDim/width)); width = maxDim; }
+          else { width = Math.round(width * (maxDim/height)); height = maxDim; }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+        const compressedDataUrl = canvas.toDataURL("image/jpeg", 0.75);
+        const base64 = compressedDataUrl.split(",")[1];
+        setAttachedImage({ data: base64, mediaType: "image/jpeg", previewUrl: compressedDataUrl });
+      };
+      img.src = reader.result;
     };
     reader.readAsDataURL(file);
   };
