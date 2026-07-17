@@ -491,6 +491,18 @@ function App() {
 
     const prl = partners.map(p => `- ${p.name}|id:${p.id}|${p.role}|€${p.rate}/ώρα|${p.notes||"—"}`).join("\n");
 
+    const recentHours = dailyHours.slice(0, 60).map(h => {
+      const dr = drivers.find(d=>d.id===h.driverId);
+      const pr = h.projectId ? PROJECTS.find(p=>p.id===h.projectId) : null;
+      const timeStr = (h.start_time && h.end_time) ? `${h.start_time}-${h.end_time}` : `${h.hours}ω`;
+      return `- ${dr?dr.name:("id"+h.driverId)}|${h.date}|${timeStr}|${pr?pr.name:"—"}`;
+    }).join("\n");
+
+    const recentAbsences = log.filter(l=>l.type==="absence"||l.type==="leave").slice(0, 40).map(l => {
+      const dr = l.driverId ? drivers.find(d=>d.id===l.driverId) : null;
+      return `- ${l.type==="leave"?"Άδεια":"Απουσία"}|${dr?dr.name:"—"}|${l.ts}|${l.text}`;
+    }).join("\n");
+
     return `Είσαι η ALLYRA, ψηφιακή AI γραμματέας courier εταιρείας, μόνο ελληνικά. Χρήστης: Alex (διευθυντής).
 ΣΗΜΕΡΑ είναι: ${todayStr} (${today.toLocaleDateString("el-GR")}). ΑΥΡΙΟ είναι: ${tomorrowStr}. ΜΕΘΑΥΡΙΟ είναι: ${dayAfterStr}. ΧΘΕΣ ήταν: ${yesterdayStr}. ΠΡΟΧΘΕΣ ήταν: ${dayBeforeStr}.
 ΟΔΗΓΟΙ(${drivers.length}):
@@ -499,6 +511,11 @@ PROJECTS(ενεργά):
 ${pl}
 ΣΥΝΕΡΓΑΤΕΣ/ΕΡΓΟΛΑΒΟΙ(${partners.length}):
 ${prl}
+ΚΑΤΑΓΕΓΡΑΜΜΕΝΕΣ ΩΡΕΣ ΕΡΓΑΣΙΑΣ (πρόσφατες, μορφή: όνομα|ημερομηνία|ώρες ή ωράριο|project):
+${recentHours||"— καμία καταγραφή —"}
+ΠΡΟΣΦΑΤΕΣ ΑΠΟΥΣΙΕΣ/ΑΔΕΙΕΣ (μορφή: τύπος|όνομα|ημερομηνία|περιγραφή):
+${recentAbsences||"— καμία —"}
+Όταν ο χρήστης ρωτάει για ώρες, τιμολόγηση ή πληρωμή συγκεκριμένης περιόδου, ΧΡΗΣΙΜΟΠΟΙΗΣΕ τις παραπάνω ΚΑΤΑΓΕΓΡΑΜΜΕΝΕΣ ΩΡΕΣ (όχι υποθέσεις). Αν λείπουν κάποιες μέρες από τις καταγραφές, πες ξεκάθαρα ποιες ημερομηνίες έχεις και ποιες λείπουν, αντί να πεις γενικά "δεν έχω δεδομένα".
 RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κυρ€9.30. Ιδιόκτ+€1.20. Εργολάβος:€9.50(δικό τους)/€8.50(δικό μας).
 Απάντα σύντομα (max 4 προτάσεις).
 ΑΝ Ο ΧΡΗΣΤΗΣ ΑΝΑΦΕΡΕΙ "σήμερα","αύριο" ή "μεθαύριο", ΧΡΗΣΙΜΟΠΟΙΗΣΕ τις παραπάνω πραγματικές ημερομηνίες όταν περιγράφεις την αλλαγή.
@@ -528,7 +545,7 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
 ΑΝ Ο ΧΡΗΣΤΗΣ ΖΗΤΑΕΙ ΑΛΛΑΓΗ ΣΕ ΥΠΑΡΧΟΝΤΑ ΣΥΝΕΡΓΑΤΗ (όνομα, ρόλος, τιμή, σημειώσεις), ΠΡΕΠΕΙ ΠΑΝΤΑ να συμπεριλάβεις ΣΤΟ ΤΕΛΟΣ μία γραμμή ΑΚΡΙΒΩΣ σε αυτή τη μορφή:
 [ACTION:{"type":"update_partner","id":<id>,"field":"<name|role|rate|notes>","value":"<τιμή>"}]
 Αν δεν ζητείται καμία αλλαγή, ΜΗΝ βάζεις καμία ACTION γραμμή.`;
-  }, [drivers, assignments, partners]);
+  }, [drivers, assignments, partners, dailyHours, log]);
 
   const sendMsg = useCallback(async (txt, currentMsgs, imageAttachment=null) => {
     if (!txt.trim() && !imageAttachment) return;
@@ -678,7 +695,7 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
       }
     } catch(e) { setMessages(p=>[...p,{role:"assistant",text:"Σφάλμα σύνδεσης."}]); }
     finally { setThinking(false); }
-  }, [buildPrompt, drivers]);
+  }, [buildPrompt, drivers, assignments, partners]);
 
   const handleImageSelect = (file) => {
     if (!file) return;
@@ -775,11 +792,21 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
     return { day:parseInt(m[1],10), month:parseInt(m[2],10), year:parseInt(m[3],10) };
   };
 
-  const parseRangeDays = (text) => {
+  const parseRangeDays = (text, refYear, refMonth) => {
     const m = (text||"").match(/(\d{1,2})\s*-\s*(\d{1,2})\/(\d{1,2})/);
     if (m) {
-      const d1=parseInt(m[1],10), d2=parseInt(m[2],10);
-      if (d2>=d1) return d2-d1+1;
+      const d1=parseInt(m[1],10), d2=parseInt(m[2],10), mo=parseInt(m[3],10);
+      if (d2>=d1) {
+        if (refYear) {
+          let weekdays = 0;
+          for (let day=d1; day<=d2; day++) {
+            const dow = new Date(refYear, mo-1, day).getDay();
+            if (dow>=1 && dow<=5) weekdays++;
+          }
+          return weekdays;
+        }
+        return d2-d1+1;
+      }
     }
     return 1;
   };
@@ -809,14 +836,21 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
 
     let absenceDaysTotal = 0;
     monthLogEntries.filter(l=>l.type==="absence"||l.type==="leave").forEach(l => {
-      absenceDaysTotal += parseRangeDays(l.text);
+      absenceDaysTotal += parseRangeDays(l.text, yy, mm);
     });
 
     let hoursDeltaTotal = 0;
+    const hoursByDate = {};
+    monthHoursEntries.forEach(h => {
+      const key = h.date;
+      hoursByDate[key] = (hoursByDate[key]||0) + (parseFloat(h.hours)||0);
+    });
     const hourEntryDetails = monthHoursEntries.map(h => {
       const delta = (parseFloat(h.hours)||0) - dailyEquivalent;
-      hoursDeltaTotal += delta;
       return { ...h, delta };
+    });
+    Object.values(hoursByDate).forEach(dayTotal => {
+      hoursDeltaTotal += (dayTotal - dailyEquivalent);
     });
 
     const absenceHoursLost = absenceDaysTotal * dailyEquivalent;
@@ -905,6 +939,7 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
 
     const projectAssignments = assignments.filter(a=>a.projectId===projectId);
     let baselineTotal = 0;
+    let totalCost = 0;
     const driverLines = [];
     const ambiguousNotes = [];
 
@@ -922,7 +957,7 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
           const d = parseLogDate(l.ts); return d && d.year===yy && d.month===mm;
         })());
         let absenceDays = 0;
-        driverAbsences.forEach(l => { absenceDays += parseRangeDays(l.text); });
+        driverAbsences.forEach(l => { absenceDays += parseRangeDays(l.text, yy, mm); });
         absenceHours = absenceDays * shiftHours;
       } else if (driverProjectCount > 1) {
         const hasAbsence = log.some(l => l.driverId===a.driverId && (l.type==="absence"||l.type==="leave") && (() => {
@@ -933,14 +968,35 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
 
       const projectHoursEntries = dailyHours.filter(h => h.driverId===a.driverId && h.projectId===projectId && h.date && h.date.startsWith(monthStr));
       let delta = 0;
-      projectHoursEntries.forEach(h => { delta += (parseFloat(h.hours)||0) - shiftHours; });
+      const catHours = { normal:0, night:0, sunday:0, sundayNight:0 };
+      let hasRecordedTimes = false;
+      projectHoursEntries.forEach(h => {
+        delta += (parseFloat(h.hours)||0) - shiftHours;
+        if (h.start_time && h.end_time) {
+          const b = computeShiftBreakdown(h.date, h.start_time, h.end_time);
+          if (b) { catHours.normal+=b.normal; catHours.night+=b.night; catHours.sunday+=b.sunday; catHours.sundayNight+=b.sundayNight; hasRecordedTimes=true; }
+        }
+      });
 
       const finalHours = baseline - absenceHours + delta;
       baselineTotal += finalHours;
-      driverLines.push({ driver, shiftHours, daysPerWeek, baseline, absenceHours, delta, finalHours });
+
+      let lineCost;
+      if (hasRecordedTimes) {
+        const recordedTotal = catHours.normal+catHours.night+catHours.sunday+catHours.sundayNight;
+        const remainingNormal = Math.max(0, finalHours - recordedTotal);
+        lineCost = (catHours.normal+remainingNormal)*(project.rateDay||0)
+          + catHours.night*(project.rateNight||project.rateDay||0)
+          + catHours.sunday*(project.rateSun||project.rateDay||0)
+          + catHours.sundayNight*(project.rateSunNight||project.rateSun||project.rateNight||project.rateDay||0);
+      } else {
+        lineCost = finalHours * (project.rateDay||0);
+      }
+      totalCost += lineCost;
+      driverLines.push({ driver, shiftHours, daysPerWeek, baseline, absenceHours, delta, finalHours, catHours, hasRecordedTimes, lineCost });
     });
 
-    const cost = baselineTotal * (project.rateDay||0);
+    const cost = totalCost;
 
     return { project, daysInMonth, driverLines, totalHours:baselineTotal, cost, ambiguousNotes };
   };
@@ -1381,7 +1437,14 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
                         <div style={{fontSize:11,color:"#778"}}>{dl.shiftHours.toFixed(1)} ώρες/ημέρα × {dl.daysPerWeek} ημέρες/βδομάδα → {dl.baseline.toFixed(1)} βασικές ώρες</div>
                         {dl.absenceHours>0 && <div style={{fontSize:11,color:"#ff6b6b"}}>− {dl.absenceHours.toFixed(1)} ώρες απουσίας</div>}
                         {dl.delta!==0 && <div style={{fontSize:11,color:dl.delta>0?"#00e5a0":"#f5c518"}}>{dl.delta>0?"+":""}{dl.delta.toFixed(1)} ώρες απόκλισης</div>}
-                        <div style={{fontSize:12,fontWeight:700,color:"#e8eaf6",marginTop:4}}>Σύνολο: {dl.finalHours.toFixed(1)} ώρες</div>
+                        {dl.hasRecordedTimes && (
+                          <div style={{fontSize:11,color:"#5b8cff",marginTop:2}}>
+                            {dl.catHours.night>0 && `Νύχτα: ${dl.catHours.night.toFixed(1)}  `}
+                            {dl.catHours.sunday>0 && `Κυρ/Αργ: ${dl.catHours.sunday.toFixed(1)}  `}
+                            {dl.catHours.sundayNight>0 && `Κυρ+Νύχτα: ${dl.catHours.sundayNight.toFixed(1)}`}
+                          </div>
+                        )}
+                        <div style={{fontSize:12,fontWeight:700,color:"#e8eaf6",marginTop:4}}>Σύνολο: {dl.finalHours.toFixed(1)} ώρες{dl.lineCost!=null?` · ${fmtEur(dl.lineCost)}`:""}</div>
                       </div>
                     ))}
                     {r.ambiguousNotes.length>0 && (
