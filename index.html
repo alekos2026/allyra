@@ -387,7 +387,7 @@ function App() {
   useEffect(() => {
     async function fetchDailyHours() {
       const { data, error } = await supabase.from('daily_hours')
-        .select('id, driverId:driverid, date, projectId:projectid, hours, note')
+        .select('id, driverId:driverid, date, projectId:projectid, hours, note, start_time, end_time')
         .order('id', { ascending:false });
       if (!error && data) setDailyHours(data);
     }
@@ -504,6 +504,7 @@ function App() {
     }).join("\n");
 
     return `Είσαι η ALLYRA, ψηφιακή AI γραμματέας courier εταιρείας, μόνο ελληνικά. Χρήστης: Alex (διευθυντής).
+ΣΗΜΑΝΤΙΚΟ ΓΙΑ ΤΗ ΜΝΗΜΗ: Όλες οι καταχωρήσεις (οδηγοί, ώρες, άδειες, αναθέσεις, συνεργάτες) ΚΑΙ το ιστορικό αυτής της συνομιλίας αποθηκεύονται ΜΟΝΙΜΑ στη βάση δεδομένων του συστήματος (Supabase) και συγχρονίζονται σε όλες τις συσκευές. ΠΟΤΕ μην πεις στον χρήστη ότι "δεν έχεις μνήμη μεταξύ συνεδριών" ή ότι "θα ξεχάσεις τη συζήτηση" — αυτό ΕΙΝΑΙ ΛΑΘΟΣ. Όταν ο χρήστης λέει "κράτα το στη μνήμη" ή "θα επανέλθω αργότερα", καθησύχασέ τον ότι τα δεδομένα και το ιστορικό παραμένουν αποθηκευμένα και θα είναι διαθέσιμα όταν επιστρέψει. Η μόνη εξαίρεση: οι ΦΩΤΟΓΡΑΦΙΕΣ που στέλνει δεν αποθηκεύονται ως εικόνες (μόνο τα δεδομένα που εξάγονται από αυτές) — αν χρειαστεί να ξαναδιαβάσεις μια φωτογραφία, πρέπει να την ξαναστείλει.
 ΣΗΜΕΡΑ είναι: ${todayStr} (${today.toLocaleDateString("el-GR")}). ΑΥΡΙΟ είναι: ${tomorrowStr}. ΜΕΘΑΥΡΙΟ είναι: ${dayAfterStr}. ΧΘΕΣ ήταν: ${yesterdayStr}. ΠΡΟΧΘΕΣ ήταν: ${dayBeforeStr}.
 ΟΔΗΓΟΙ(${drivers.length}):
 ${dl}
@@ -748,9 +749,18 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
       const hasHours = e.hours!=="" && !isNaN(parseFloat(e.hours));
       return e.driverId && e.date && (hasTimes || hasHours);
     });
+    let savedCount = 0;
+    let skippedCount = 0;
+    const alreadySeen = [...dailyHours];
     valid.forEach(e => {
       const breakdown = (e.startTime && e.endTime) ? computeShiftBreakdown(e.date, e.startTime, e.endTime) : null;
       const hours = breakdown ? breakdown.total : parseFloat(e.hours);
+      const isDup = alreadySeen.some(h =>
+        h.driverId===e.driverId && h.date===e.date &&
+        ((e.startTime && e.endTime && h.start_time===e.startTime && h.end_time===e.endTime) ||
+         (!e.startTime && Math.abs((parseFloat(h.hours)||0)-hours)<0.01 && !h.start_time))
+      );
+      if (isDup) { skippedCount++; return; }
       let noteExtra = "";
       if (breakdown) {
         const parts = [];
@@ -760,14 +770,24 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
         if (breakdown.sundayNight>0) parts.push(`${breakdown.sundayNight} Κυριακή/αργία+νύχτα`);
         noteExtra = ` (${e.startTime}-${e.endTime}: ${parts.join(", ")})`;
       }
-      const entry = { driverId:e.driverId, date:e.date, projectId:e.projectId||null, hours, note:`Από φωτογραφία (${e.driverNameRaw||""})${noteExtra}` };
+      const entry = { driverId:e.driverId, date:e.date, projectId:e.projectId||null, hours, note:`Από φωτογραφία (${e.driverNameRaw||""})${noteExtra}`, start_time:e.startTime||null, end_time:e.endTime||null };
+      alreadySeen.push(entry);
       setDailyHours(prev => [entry, ...prev]);
       supabase.from('daily_hours').insert({ driverid:e.driverId, date:e.date, projectid:e.projectId||null, hours, note:entry.note, start_time:e.startTime||null, end_time:e.endTime||null }).then(() => {});
       addLog(`Καταχώρηση από φωτογραφία: ${drivers.find(d=>d.id===e.driverId)?.name||e.driverNameRaw} — ${hours} ώρες${noteExtra}`, "hours", e.driverId, e.date);
+      savedCount++;
     });
-    notify(`Καταχωρήθηκαν ${valid.length} εγγραφές ✓`, "success");
+    if (skippedCount>0) notify(`Καταχωρήθηκαν ${savedCount} ✓ — παραλείφθηκαν ${skippedCount} διπλότυπα`, "warning");
+    else notify(`Καταχωρήθηκαν ${savedCount} εγγραφές ✓`, "success");
     setExtractOpen(false);
     setExtractEntries([]);
+  };
+
+  const deleteDailyHour = (entryId) => {
+    if (!entryId) { notify("Αυτή η εγγραφή δεν έχει αναγνωριστικό — ανανέωσε τη σελίδα","warning"); return; }
+    setDailyHours(prev => prev.filter(h => h.id !== entryId));
+    supabase.from('daily_hours').delete().eq('id', entryId).then(() => {});
+    notify("Η καταγραφή διαγράφηκε ✓","success");
   };
 
   const startListen = () => {
@@ -1386,7 +1406,22 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
                         <div style={{fontSize:24,fontWeight:900,color:"#00e5a0"}}>{fmtEur(r.payrollCost)}</div>
                       </div>
                     </div>
-                    <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Καταγραφές μήνα ({r.monthLogEntries.length})</div>
+                    <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Καταγραφές Ωρών ({r.hourEntryDetails.length})</div>
+                    {r.hourEntryDetails.length===0 && <div style={{fontSize:12,color:"#445",marginBottom:10}}>Καμία καταγραφή ωρών αυτό το μήνα.</div>}
+                    {r.hourEntryDetails.slice().sort((a,b)=>(a.date||"").localeCompare(b.date||"")).map(h=>{
+                      const pr = h.projectId ? PROJECTS.find(p=>p.id===h.projectId) : null;
+                      const timeStr = (h.start_time && h.end_time) ? `${h.start_time}-${h.end_time}` : `${h.hours}ω`;
+                      return (
+                        <div key={h.id||Math.random()} style={{...S.card,padding:10,marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                          <div>
+                            <div style={{fontSize:12,color:"#e8eaf6"}}>{h.date} · {timeStr}{pr?` · ${pr.name}`:""}</div>
+                            <div style={{fontSize:10,color:"#556",marginTop:2}}>{h.note||""}</div>
+                          </div>
+                          <button style={{background:"none",border:"1px solid #ff6b6b",color:"#ff6b6b",borderRadius:8,padding:"4px 8px",fontSize:11,cursor:"pointer",fontFamily:"inherit",flexShrink:0}} onClick={()=>deleteDailyHour(h.id)}>Διαγραφή</button>
+                        </div>
+                      );
+                    })}
+                    <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8,marginTop:14}}>Απουσίες/Άδειες μήνα ({r.monthLogEntries.length})</div>
                     {r.monthLogEntries.length===0 && <div style={{fontSize:12,color:"#445",marginBottom:10}}>Καμία καταγραφή αυτό το μήνα.</div>}
                     {r.monthLogEntries.map(l=>(
                       <div key={l.id} style={{...S.card,padding:10,marginBottom:6}}>
