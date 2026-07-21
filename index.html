@@ -188,17 +188,62 @@ const RATES = {
   own:     { normal:6.50, overtime:7.55, night:9.10, sunday:10.50 },
 };
 
-async function callAllyra(sys, history, newMsg) {
-  const messages = [
+const ALLYRA_TOOLS = [
+  {
+    name: "search_daily_hours",
+    description: "Αναζήτηση καταγεγραμμένων ωρών εργασίας οδηγών στη βάση δεδομένων, με φίλτρα οδηγού/ημερομηνιών/project. Χρησιμοποίησέ το ΠΑΝΤΑ όταν ο χρήστης ρωτάει για ώρες, τιμολόγηση, ή παρουσία σε συγκεκριμένη περίοδο ή οδηγό — ειδικά αν η περίοδος είναι μεγαλύτερη από τις λίγες πρόσφατες καταγραφές που ήδη σου έχουν δοθεί.",
+    input_schema: {
+      type: "object",
+      properties: {
+        driverName: { type: "string", description: "Όνομα ή μέρος ονόματος οδηγού (προαιρετικό)" },
+        dateFrom: { type: "string", description: "Ημερομηνία έναρξης YYYY-MM-DD (προαιρετικό)" },
+        dateTo: { type: "string", description: "Ημερομηνία λήξης YYYY-MM-DD (προαιρετικό)" },
+        projectName: { type: "string", description: "Όνομα project (προαιρετικό)" }
+      }
+    }
+  },
+  {
+    name: "search_log",
+    description: "Αναζήτηση στο πλήρες ιστορικό μεταβολών (απουσίες, άδειες, αποχωρήσεις, αναθέσεις, συνεργάτες κλπ), όχι μόνο τις πρόσφατες. Χρησιμοποίησέ το για ερωτήσεις σχετικά με απουσίες/άδειες συγκεκριμένου οδηγού ή περιόδου.",
+    input_schema: {
+      type: "object",
+      properties: {
+        driverName: { type: "string" },
+        type: { type: "string", description: "absence, leave, terminated, assignment, hours, project, partner, ή system (προαιρετικό)" },
+        dateFrom: { type: "string", description: "YYYY-MM-DD (προαιρετικό)" },
+        dateTo: { type: "string", description: "YYYY-MM-DD (προαιρετικό)" },
+        keyword: { type: "string", description: "Λέξη-κλειδί μέσα στο κείμενο (προαιρετικό)" }
+      }
+    }
+  }
+];
+
+async function callAllyra(sys, history, newMsg, executeTool) {
+  let messages = [
     ...history.slice(-10).map(m => ({ role: m.role==="user"?"user":"assistant", content: m.text })),
     { role:"user", content:newMsg }
   ];
-  const res = await fetch("/api/chat", {
-    method:"POST", headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({ system: sys, messages }),
-  });
-  const d = await res.json();
-  return d.content?.[0]?.text || "Δεν κατάλαβα. Δοκίμασε ξανά.";
+  for (let i=0; i<4; i++) {
+    const res = await fetch("/api/chat", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({ system: sys, messages, tools: ALLYRA_TOOLS }),
+    });
+    const d = await res.json();
+    const content = d.content || [];
+    const toolUses = content.filter(b=>b.type==="tool_use");
+    if (toolUses.length===0) {
+      const textBlock = content.find(b=>b.type==="text");
+      return textBlock ? textBlock.text : "Δεν κατάλαβα. Δοκίμασε ξανά.";
+    }
+    messages.push({ role:"assistant", content });
+    const toolResults = toolUses.map(tu => ({
+      type:"tool_result",
+      tool_use_id: tu.id,
+      content: JSON.stringify(executeTool(tu.name, tu.input||{}))
+    }));
+    messages.push({ role:"user", content: toolResults });
+  }
+  return "Δεν μπόρεσα να ολοκληρώσω την αναζήτηση, δοκίμασε ξανά με πιο συγκεκριμένη ερώτηση.";
 }
 
 const scol = s => s==="active"?"#00e5a0":s==="absent"?"#ff6b6b":s==="terminated"?"#888":"#888";
@@ -516,7 +561,7 @@ ${prl}
 ${recentHours||"— καμία καταγραφή —"}
 ΠΡΟΣΦΑΤΕΣ ΑΠΟΥΣΙΕΣ/ΑΔΕΙΕΣ (μορφή: τύπος|όνομα|ημερομηνία|περιγραφή):
 ${recentAbsences||"— καμία —"}
-Όταν ο χρήστης ρωτάει για ώρες, τιμολόγηση ή πληρωμή συγκεκριμένης περιόδου, ΧΡΗΣΙΜΟΠΟΙΗΣΕ τις παραπάνω ΚΑΤΑΓΕΓΡΑΜΜΕΝΕΣ ΩΡΕΣ (όχι υποθέσεις). Αν λείπουν κάποιες μέρες από τις καταγραφές, πες ξεκάθαρα ποιες ημερομηνίες έχεις και ποιες λείπουν, αντί να πεις γενικά "δεν έχω δεδομένα".
+Όταν ο χρήστης ρωτάει για ώρες, τιμολόγηση ή πληρωμή συγκεκριμένης περιόδου, ΧΡΗΣΙΜΟΠΟΙΗΣΕ τις παραπάνω ΚΑΤΑΓΕΓΡΑΜΜΕΝΕΣ ΩΡΕΣ (όχι υποθέσεις). Οι παραπάνω λίστες δείχνουν μόνο τις πιο πρόσφατες καταγραφές (όχι όλες) — για ΑΚΡΙΒΗ και ΠΛΗΡΗ απάντηση σε συγκεκριμένη περίοδο/οδηγό/project, ΧΡΗΣΙΜΟΠΟΙΗΣΕ ΠΑΝΤΑ το εργαλείο search_daily_hours (για ώρες εργασίας) ή search_log (για απουσίες/άδειες/ιστορικό) πριν απαντήσεις, ώστε να έχεις πλήρη δεδομένα αντί να στηρίζεσαι μόνο στο απόσπασμα. Αν λείπουν κάποιες μέρες ακόμα και μετά την αναζήτηση, πες ξεκάθαρα ποιες ημερομηνίες έχεις και ποιες λείπουν, αντί να πεις γενικά "δεν έχω δεδομένα".
 RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κυρ€9.30. Ιδιόκτ+€1.20. Εργολάβος:€9.50(δικό τους)/€8.50(δικό μας).
 Απάντα σύντομα (max 4 προτάσεις).
 ΑΝ Ο ΧΡΗΣΤΗΣ ΑΝΑΦΕΡΕΙ "σήμερα","αύριο" ή "μεθαύριο", ΧΡΗΣΙΜΟΠΟΙΗΣΕ τις παραπάνω πραγματικές ημερομηνίες όταν περιγράφεις την αλλαγή.
@@ -548,6 +593,53 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
 Αν δεν ζητείται καμία αλλαγή, ΜΗΝ βάζεις καμία ACTION γραμμή.`;
   }, [drivers, assignments, partners, dailyHours, log]);
 
+  const executeAllyraTool = useCallback((name, input) => {
+    const matchDriver = (nameStr) => {
+      if (!nameStr) return null;
+      const raw = nameStr.toLowerCase();
+      return drivers.find(d => {
+        const tokens = d.name.toLowerCase().split(" ").filter(Boolean);
+        return d.name.toLowerCase().includes(raw) || tokens.some(tok => tok.length>2 && (raw.includes(tok) || tok.includes(raw)));
+      });
+    };
+    if (name === "search_daily_hours") {
+      const drv = input.driverName ? matchDriver(input.driverName) : null;
+      const results = dailyHours.filter(h => {
+        if (drv && h.driverId !== drv.id) return false;
+        if (input.dateFrom && h.date < input.dateFrom) return false;
+        if (input.dateTo && h.date > input.dateTo) return false;
+        if (input.projectName) {
+          const pr = h.projectId ? PROJECTS.find(p=>p.id===h.projectId) : null;
+          if (!pr || !pr.name.toLowerCase().includes(input.projectName.toLowerCase())) return false;
+        }
+        return true;
+      }).map(h => {
+        const dr = drivers.find(d=>d.id===h.driverId);
+        const pr = h.projectId ? PROJECTS.find(p=>p.id===h.projectId) : null;
+        return { driver: dr?dr.name:("id:"+h.driverId), date:h.date, hours:h.hours, start_time:h.start_time||null, end_time:h.end_time||null, project: pr?pr.name:null };
+      });
+      return { count: results.length, entries: results.slice(0,150) };
+    }
+    if (name === "search_log") {
+      const drv = input.driverName ? matchDriver(input.driverName) : null;
+      const results = log.filter(l => {
+        if (drv && l.driverId !== drv.id) return false;
+        if (input.type && l.type !== input.type) return false;
+        if (input.keyword && !(l.text||"").toLowerCase().includes(input.keyword.toLowerCase())) return false;
+        if (input.dateFrom || input.dateTo) {
+          const d = parseLogDate(l.ts);
+          if (!d) return false;
+          const dateStr = `${d.year}-${String(d.month).padStart(2,"0")}-${String(d.day).padStart(2,"0")}`;
+          if (input.dateFrom && dateStr < input.dateFrom) return false;
+          if (input.dateTo && dateStr > input.dateTo) return false;
+        }
+        return true;
+      }).map(l => ({ date: l.ts, type: l.type, text: l.text }));
+      return { count: results.length, entries: results.slice(0,150) };
+    }
+    return { error: "unknown tool: " + name };
+  }, [drivers, dailyHours, log]);
+
   const sendMsg = useCallback(async (txt, currentMsgs, imageAttachment=null) => {
     if (!txt.trim() && !imageAttachment) return;
     const displayText = txt.trim() || "📷 Φωτογραφία προγράμματος/ωρών";
@@ -562,7 +654,7 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
             { type:"text", text: txt.trim() || "Διάβασε αυτή τη φωτογραφία και εξήγαγε ονόματα, ημερομηνίες και ώρες εργασίας." }
           ]
         : txt;
-      const r = await callAllyra(buildPrompt(), currentMsgs, msgContent);
+      const r = await callAllyra(buildPrompt(), currentMsgs, msgContent, executeAllyraTool);
 
       let workingText = r;
       let extractData = null;
@@ -696,7 +788,7 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
       }
     } catch(e) { setMessages(p=>[...p,{role:"assistant",text:"Σφάλμα σύνδεσης."}]); }
     finally { setThinking(false); }
-  }, [buildPrompt, drivers, assignments, partners]);
+  }, [buildPrompt, drivers, assignments, partners, executeAllyraTool]);
 
   const handleImageSelect = (file) => {
     if (!file) return;
