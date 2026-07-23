@@ -482,6 +482,11 @@ function App() {
   const [attachedImage, setAttachedImage] = useState(null);
   const [extractOpen, setExtractOpen] = useState(false);
   const [extractEntries, setExtractEntries] = useState([]);
+  const [manualHourOpen, setManualHourOpen] = useState(false);
+  const [manualHour, setManualHour] = useState({ date:"", startTime:"", endTime:"", hours:"", projectId:null });
+  const [manualAbsenceOpen, setManualAbsenceOpen] = useState(false);
+  const [manualAbsence, setManualAbsence] = useState({ type:"absence", date:"", text:"" });
+  const [manualEntryDriverId, setManualEntryDriverId] = useState(null);
   const fileInputRef = useRef(null);
   const recRef = useRef(null);
   const msgEnd = useRef(null);
@@ -882,6 +887,51 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
     notify("Η καταγραφή διαγράφηκε ✓","success");
   };
 
+  const saveManualHour = (driverId) => {
+    if (!driverId || !manualHour.date) { notify("Συμπλήρωσε τουλάχιστον οδηγό και ημερομηνία","warning"); return; }
+    const hasTimes = manualHour.startTime && manualHour.endTime;
+    const hasHours = manualHour.hours!=="" && !isNaN(parseFloat(manualHour.hours));
+    if (!hasTimes && !hasHours) { notify("Βάλε ώρα εισόδου/εξόδου ή αριθμό ωρών","warning"); return; }
+    const breakdown = hasTimes ? computeShiftBreakdown(manualHour.date, manualHour.startTime, manualHour.endTime) : null;
+    const hours = breakdown ? breakdown.total : parseFloat(manualHour.hours);
+    const isDup = dailyHours.some(h => h.driverId===driverId && h.date===manualHour.date &&
+      ((hasTimes && h.start_time===manualHour.startTime && h.end_time===manualHour.endTime) ||
+       (!hasTimes && Math.abs((parseFloat(h.hours)||0)-hours)<0.01 && !h.start_time)));
+    if (isDup) { notify("Υπάρχει ήδη ίδια καταγραφή αυτή την ημέρα — δεν προστέθηκε ξανά","warning"); return; }
+    const note = `Χειροκίνητη καταχώρηση${hasTimes?` (${manualHour.startTime}-${manualHour.endTime})`:""}`;
+    const entry = { driverId, date:manualHour.date, projectId:manualHour.projectId||null, hours, note, start_time:manualHour.startTime||null, end_time:manualHour.endTime||null };
+    setDailyHours(prev => [entry, ...prev]);
+    supabase.from('daily_hours').insert({ driverid:driverId, date:manualHour.date, projectid:manualHour.projectId||null, hours, note, start_time:manualHour.startTime||null, end_time:manualHour.endTime||null }).then(() => {});
+    addLog(`${note}: ${drivers.find(d=>d.id===driverId)?.name||""} — ${hours} ώρες`, "hours", driverId, manualHour.date);
+    notify("Καταχωρήθηκε ✓","success");
+    setManualHour({ date:"", startTime:"", endTime:"", hours:"", projectId:null });
+    setManualHourOpen(false);
+  };
+
+  const saveManualAbsence = (driverId) => {
+    if (!driverId || !manualAbsence.date) { notify("Συμπλήρωσε τουλάχιστον οδηγό και ημερομηνία","warning"); return; }
+    const driverName = drivers.find(d=>d.id===driverId)?.name || "";
+    const label = manualAbsence.type==="leave" ? "άδεια" : "απών";
+    const text = manualAbsence.text.trim() || `${driverName} ήταν ${label}`;
+    addLog(text, manualAbsence.type, driverId, manualAbsence.date);
+    notify("Καταχωρήθηκε ✓","success");
+    setManualAbsence({ type:"absence", date:"", text:"" });
+    setManualAbsenceOpen(false);
+  };
+
+  const changeDriverStatusManual = (driverId, newStatus) => {
+    let extraFields = {};
+    if (newStatus === "terminated") {
+      extraFields = { terminated_date: new Date().toISOString().slice(0,10), terminated_reason: "Χειροκίνητη αλλαγή" };
+    } else if (newStatus === "active") {
+      extraFields = { terminated_date: null, terminated_reason: null };
+    }
+    setDrivers(prev => prev.map(d => d.id===driverId ? {...d, status:newStatus, ...extraFields} : d));
+    supabase.from('drivers').update({ status:newStatus, ...extraFields }).eq('id', driverId).then(() => {});
+    const label = newStatus==="terminated"?"Αποχώρησε/Απολύθηκε":newStatus==="absent"?"Απών":"Ενεργός";
+    notify(`Status: ${label} ✓`,"success");
+  };
+
   const startListen = () => {
     const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
     if (!SR) { notify("Χρησιμοποίησε Chrome για φωνή","warning"); return; }
@@ -1272,15 +1322,33 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
                         </div>
                       )}
                     </div>
-                    <div style={{...S.badge,background:scol(d.status)+"22",color:scol(d.status),border:`1px solid ${scol(d.status)}`}}>{slabel(d.status)}</div>
+                    {driversView!=="archived" ? (
+                      <select value={d.status} onChange={e=>changeDriverStatusManual(d.id, e.target.value)} style={{...S.badge,background:scol(d.status)+"22",color:scol(d.status),border:`1px solid ${scol(d.status)}`,cursor:"pointer",fontFamily:"inherit"}}>
+                        <option value="active">Ενεργός</option>
+                        <option value="absent">Απών</option>
+                        <option value="terminated">Αποχώρησε</option>
+                      </select>
+                    ) : (
+                      <div style={{...S.badge,background:scol(d.status)+"22",color:scol(d.status),border:`1px solid ${scol(d.status)}`}}>{slabel(d.status)}</div>
+                    )}
                   </div>
-                  <div style={{display:"flex",gap:14,marginTop:8}}>
+                  <div style={{display:"flex",gap:14,marginTop:8,flexWrap:"wrap"}}>
                     <button style={{background:"none",border:"none",color:"#5b8cff",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0}} onClick={()=>setExpandedDriver(isExpanded?null:d.id)}>
                       {isExpanded ? "▲ Απόκρυψη ιστορικού" : `▼ Πλήρες ιστορικό (${driverHistory.length})`}
                     </button>
                     {driversView!=="archived" && (
                       <button style={{background:"none",border:"none",color:"#f5c518",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0}} onClick={()=>{setReportDriverId(d.id);setReportOpen(true);}}>
                         📊 Μηνιαία Αναφορά
+                      </button>
+                    )}
+                    {driversView!=="archived" && (
+                      <button style={{background:"none",border:"none",color:"#00e5a0",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0}} onClick={()=>{setManualEntryDriverId(d.id);setManualHourOpen(true);}}>
+                        ➕ Ώρα
+                      </button>
+                    )}
+                    {driversView!=="archived" && (
+                      <button style={{background:"none",border:"none",color:"#ff6b6b",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0}} onClick={()=>{setManualEntryDriverId(d.id);setManualAbsenceOpen(true);}}>
+                        ➕ Απουσία/Άδεια
                       </button>
                     )}
                   </div>
@@ -1640,6 +1708,64 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
             <button style={{width:42,height:42,borderRadius:"50%",background:"#00e5a0",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"#0a0f1e",flexShrink:0,fontSize:18}} onClick={()=>sendMsg(input,messages,attachedImage)}>➤</button>
           </div>
           {listening && <div style={{textAlign:"center",fontSize:12,color:"#ff6b6b",padding:"6px",background:"#ff6b6b11",fontWeight:600}}>🎙 Ακούω... μίλα στα ελληνικά</div>}
+        </div>
+      )}
+
+      {manualHourOpen && (
+        <div style={S.overlay}>
+          <div style={S.modal}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 16px 12px",borderBottom:"1px solid #1e2a4a"}}>
+              <span style={{fontWeight:800,fontSize:16,color:"#00e5a0"}}>➕ Χειροκίνητη Καταχώρηση Ώρας</span>
+              <button style={{background:"none",border:"none",color:"#556",cursor:"pointer",fontSize:20}} onClick={()=>setManualHourOpen(false)}>✕</button>
+            </div>
+            <div style={{padding:16,overflowY:"auto"}}>
+              <div style={{fontSize:13,fontWeight:700,marginBottom:14}}>{drivers.find(d=>d.id===manualEntryDriverId)?.name}</div>
+              <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Ημερομηνία</div>
+              <input type="date" style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:14}} value={manualHour.date} onChange={e=>setManualHour(p=>({...p,date:e.target.value}))}/>
+              <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Project (προαιρετικό)</div>
+              <select style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:14}} value={manualHour.projectId||""} onChange={e=>setManualHour(p=>({...p,projectId:parseInt(e.target.value,10)||null}))}>
+                <option value="">— Χωρίς σύνδεση με project —</option>
+                {PROJECTS.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Ώρα εισόδου/εξόδου</div>
+              <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
+                <input type="time" style={{flex:1,background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit"}} value={manualHour.startTime} onChange={e=>setManualHour(p=>({...p,startTime:e.target.value}))}/>
+                <span style={{color:"#556"}}>έως</span>
+                <input type="time" style={{flex:1,background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit"}} value={manualHour.endTime} onChange={e=>setManualHour(p=>({...p,endTime:e.target.value}))}/>
+              </div>
+              <div style={{fontSize:12,color:"#556",marginBottom:8,textAlign:"center"}}>— ή —</div>
+              <input type="number" step="0.1" placeholder="Απλός αριθμός ωρών" style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:16}} value={manualHour.hours} onChange={e=>setManualHour(p=>({...p,hours:e.target.value}))}/>
+              <button style={{width:"100%",background:"#00e5a0",border:"none",borderRadius:12,padding:"12px",fontSize:14,fontWeight:800,color:"#0a0f1e",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>saveManualHour(manualEntryDriverId)}>
+                ✅ Καταχώρηση
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {manualAbsenceOpen && (
+        <div style={S.overlay}>
+          <div style={S.modal}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 16px 12px",borderBottom:"1px solid #1e2a4a"}}>
+              <span style={{fontWeight:800,fontSize:16,color:"#ff6b6b"}}>➕ Απουσία/Άδεια</span>
+              <button style={{background:"none",border:"none",color:"#556",cursor:"pointer",fontSize:20}} onClick={()=>setManualAbsenceOpen(false)}>✕</button>
+            </div>
+            <div style={{padding:16,overflowY:"auto"}}>
+              <div style={{fontSize:13,fontWeight:700,marginBottom:14}}>{drivers.find(d=>d.id===manualEntryDriverId)?.name}</div>
+              <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Τύπος</div>
+              <div style={{display:"flex",gap:8,marginBottom:14}}>
+                <button style={{flex:1,borderRadius:20,padding:"9px 10px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:"none",background:manualAbsence.type==="absence"?"#ff6b6b":"#1a2540",color:manualAbsence.type==="absence"?"#0a0f1e":"#778"}} onClick={()=>setManualAbsence(p=>({...p,type:"absence"}))}>Απουσία</button>
+                <button style={{flex:1,borderRadius:20,padding:"9px 10px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:"none",background:manualAbsence.type==="leave"?"#00e5a0":"#1a2540",color:manualAbsence.type==="leave"?"#0a0f1e":"#778"}} onClick={()=>setManualAbsence(p=>({...p,type:"leave"}))}>Άδεια</button>
+              </div>
+              <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Ημερομηνία</div>
+              <input type="date" style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:14}} value={manualAbsence.date} onChange={e=>setManualAbsence(p=>({...p,date:e.target.value}))}/>
+              <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Περιγραφή (προαιρετικό — π.χ. "13-24/07" για εύρος)</div>
+              <input type="text" placeholder="π.χ. άδεια 13-24/07" style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:16}} value={manualAbsence.text} onChange={e=>setManualAbsence(p=>({...p,text:e.target.value}))}/>
+              <button style={{width:"100%",background:"#00e5a0",border:"none",borderRadius:12,padding:"12px",fontSize:14,fontWeight:800,color:"#0a0f1e",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>saveManualAbsence(manualEntryDriverId)}>
+                ✅ Καταχώρηση
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
