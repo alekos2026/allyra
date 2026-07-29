@@ -485,10 +485,10 @@ function App() {
   const [manualHourOpen, setManualHourOpen] = useState(false);
   const [manualHour, setManualHour] = useState({ date:"", startTime:"", endTime:"", hours:"", projectId:null });
   const [manualAbsenceOpen, setManualAbsenceOpen] = useState(false);
-  const [manualAbsence, setManualAbsence] = useState({ type:"absence", date:"", text:"" });
+  const [manualAbsence, setManualAbsence] = useState({ type:"absence", date:"", dateTo:"", text:"" });
   const [manualEntryDriverId, setManualEntryDriverId] = useState(null);
   const [newDriverOpen, setNewDriverOpen] = useState(false);
-  const [newDriver, setNewDriver] = useState({ name:"", phone:"", moto:"", motoType:"company", area:"", contract_hours_week:"40" });
+  const [newDriver, setNewDriver] = useState({ name:"", phone:"", moto:"", motoType:"company", area:"", contract_hours_week:"40", work_days:5 });
   const [newPartnerOpen, setNewPartnerOpen] = useState(false);
   const [newPartner, setNewPartner] = useState({ name:"", role:"", rate:"9.50", notes:"" });
   const fileInputRef = useRef(null);
@@ -914,13 +914,36 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
 
   const saveManualAbsence = (driverId) => {
     if (!driverId || !manualAbsence.date) { notify("Συμπλήρωσε τουλάχιστον οδηγό και ημερομηνία","warning"); return; }
-    const driverName = drivers.find(d=>d.id===driverId)?.name || "";
+    const driver = drivers.find(d=>d.id===driverId);
+    const driverName = driver?.name || "";
+    const maxWeekday = (driver?.work_days===6) ? 6 : 5;
     const label = manualAbsence.type==="leave" ? "άδεια" : "απών";
-    const text = manualAbsence.text.trim() || `${driverName} ήταν ${label}`;
-    addLog(text, manualAbsence.type, driverId, manualAbsence.date);
-    notify("Καταχωρήθηκε ✓","success");
-    setManualAbsence({ type:"absence", date:"", text:"" });
+    const baseText = manualAbsence.text.trim() || `${driverName} ήταν ${label}`;
+
+    const startDate = new Date(manualAbsence.date+"T00:00:00");
+    const endDate = manualAbsence.dateTo ? new Date(manualAbsence.dateTo+"T00:00:00") : startDate;
+    if (endDate < startDate) { notify("Η ημερομηνία \"έως\" πρέπει να είναι μετά την \"από\"","warning"); return; }
+
+    let count = 0;
+    const cursor = new Date(startDate);
+    while (cursor <= endDate) {
+      const dow = cursor.getDay();
+      if (dow>=1 && dow<=maxWeekday) {
+        const dateStr = `${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,"0")}-${String(cursor.getDate()).padStart(2,"0")}`;
+        addLog(baseText, manualAbsence.type, driverId, dateStr);
+        count++;
+      }
+      cursor.setDate(cursor.getDate()+1);
+    }
+    notify(`Καταχωρήθηκαν ${count} εργάσιμες ημέρες ✓`,"success");
+    setManualAbsence({ type:"absence", date:"", dateTo:"", text:"" });
     setManualAbsenceOpen(false);
+  };
+
+  const changeDriverWorkDays = (driverId, newWorkDays) => {
+    setDrivers(prev => prev.map(d => d.id===driverId ? {...d, work_days:newWorkDays} : d));
+    supabase.from('drivers').update({ work_days:newWorkDays }).eq('id', driverId).then(() => {});
+    notify(`Ημέρες εργασίας: ${newWorkDays===6?"Εξαήμερο":"Πενθήμερο"} ✓`,"success");
   };
 
   const changeDriverStatusManual = (driverId, newStatus) => {
@@ -945,14 +968,15 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
       motoType: newDriver.motoType,
       area: newDriver.area.trim(),
       status: "active",
-      contract_hours_week: parseInt(newDriver.contract_hours_week,10)||40
+      contract_hours_week: parseInt(newDriver.contract_hours_week,10)||40,
+      work_days: newDriver.work_days===6?6:5
     };
     supabase.from('drivers').insert(record).select().then(({data}) => {
       if (data && data[0]) setDrivers(prev => [...prev, data[0]]);
     });
     notify(`Νέος οδηγός: ${record.name} ✓`,"success");
     addLog(`Προσθήκη νέου οδηγού: ${record.name}`, "system", null);
-    setNewDriver({ name:"", phone:"", moto:"", motoType:"company", area:"", contract_hours_week:"40" });
+    setNewDriver({ name:"", phone:"", moto:"", motoType:"company", area:"", contract_hours_week:"40", work_days:5 });
     setNewDriverOpen(false);
   };
 
@@ -1024,7 +1048,8 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
     const [yy,mm] = monthStr.split("-").map(Number);
     const daysInMonth = new Date(yy, mm, 0).getDate();
     const contractWeek = driver.contract_hours_week || 40;
-    const dailyEquivalent = contractWeek / 5;
+    const workDays = driver.work_days===6 ? 6 : 5;
+    const dailyEquivalent = contractWeek / workDays;
     const baselineMonthlyHours = (contractWeek/7) * daysInMonth;
 
     const monthLogEntries = log.filter(l => l.driverId===driverId && (() => {
@@ -1082,7 +1107,7 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
       if (loggedDatesSet.has(dateStr)) {
         const dayTotal = entryBreakdowns.filter(e=>e.date===dateStr).reduce((s,e)=>s+e.breakdown.total,0);
         weeks[wk].loggedHours += dayTotal;
-      } else if (dow>=1 && dow<=5) {
+      } else if (dow>=1 && dow<=workDays) {
         weeks[wk].unloggedWeekdays += 1;
       }
     }
@@ -1354,7 +1379,15 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
                       {driversView!=="archived" && (pNames.length>0 ? pNames.map((n,i)=><div key={i} style={{...S.cardSub,color:"#5b8cff"}}>{n} · {asgn[i]?.shift}</div>) : <div style={{...S.cardSub,color:"#445"}}>Χωρίς project</div>)}
                       <div style={S.cardSub}>{d.moto} · {d.motoType==="own"?"Ιδιόκτητο":"Εταιρικό"} · {d.area||"—"}</div>
                       {d.phone && <div style={S.cardSub}>📞 {d.phone}</div>}
-                      {driversView!=="archived" && <div style={{...S.cardSub,color:"#a78bfa"}}>📄 Σύμβαση: {d.contract_hours_week||40} ώρες/βδομάδα</div>}
+                      {driversView!=="archived" && (
+                        <div style={{...S.cardSub,color:"#a78bfa",display:"flex",alignItems:"center",gap:6}}>
+                          📄 Σύμβαση: {d.contract_hours_week||40} ώρες/βδομάδα ·
+                          <select value={d.work_days===6?6:5} onChange={e=>changeDriverWorkDays(d.id, parseInt(e.target.value,10))} style={{background:"none",border:"none",color:"#a78bfa",fontSize:12,fontFamily:"inherit",cursor:"pointer"}}>
+                            <option value={5}>Πενθήμερο</option>
+                            <option value={6}>Εξαήμερο</option>
+                          </select>
+                        </div>
+                      )}
                       {d.status==="terminated" && (
                         <div style={{...S.cardSub,color:"#aaa",marginTop:2}}>
                           🗄 Αποχώρησε: {d.terminated_date || "—"}{d.terminated_reason ? ` · ${d.terminated_reason}` : ""}
@@ -1774,7 +1807,12 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
               <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Περιοχή</div>
               <input type="text" placeholder="π.χ. Καλλιθέα" style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:14}} value={newDriver.area} onChange={e=>setNewDriver(p=>({...p,area:e.target.value}))}/>
               <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Σύμβαση (ώρες/βδομάδα)</div>
-              <input type="number" style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:16}} value={newDriver.contract_hours_week} onChange={e=>setNewDriver(p=>({...p,contract_hours_week:e.target.value}))}/>
+              <input type="number" style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:14}} value={newDriver.contract_hours_week} onChange={e=>setNewDriver(p=>({...p,contract_hours_week:e.target.value}))}/>
+              <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Ημέρες εργασίας/βδομάδα</div>
+              <div style={{display:"flex",gap:8,marginBottom:16}}>
+                <button style={{flex:1,borderRadius:20,padding:"9px 10px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:"none",background:newDriver.work_days===5?"#5b8cff":"#1a2540",color:newDriver.work_days===5?"#0a0f1e":"#778"}} onClick={()=>setNewDriver(p=>({...p,work_days:5}))}>Πενθήμερο (Δευ-Παρ)</button>
+                <button style={{flex:1,borderRadius:20,padding:"9px 10px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:"none",background:newDriver.work_days===6?"#5b8cff":"#1a2540",color:newDriver.work_days===6?"#0a0f1e":"#778"}} onClick={()=>setNewDriver(p=>({...p,work_days:6}))}>Εξαήμερο (Δευ-Σαβ)</button>
+              </div>
               <button style={{width:"100%",background:"#00e5a0",border:"none",borderRadius:12,padding:"12px",fontSize:14,fontWeight:800,color:"#0a0f1e",cursor:"pointer",fontFamily:"inherit"}} onClick={saveNewDriver}>
                 ✅ Προσθήκη Οδηγού
               </button>
@@ -1853,10 +1891,13 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
                 <button style={{flex:1,borderRadius:20,padding:"9px 10px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:"none",background:manualAbsence.type==="absence"?"#ff6b6b":"#1a2540",color:manualAbsence.type==="absence"?"#0a0f1e":"#778"}} onClick={()=>setManualAbsence(p=>({...p,type:"absence"}))}>Απουσία</button>
                 <button style={{flex:1,borderRadius:20,padding:"9px 10px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:"none",background:manualAbsence.type==="leave"?"#00e5a0":"#1a2540",color:manualAbsence.type==="leave"?"#0a0f1e":"#778"}} onClick={()=>setManualAbsence(p=>({...p,type:"leave"}))}>Άδεια</button>
               </div>
-              <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Ημερομηνία</div>
+              <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Από</div>
               <input type="date" style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:14}} value={manualAbsence.date} onChange={e=>setManualAbsence(p=>({...p,date:e.target.value}))}/>
-              <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Περιγραφή (προαιρετικό — π.χ. "13-24/07" για εύρος)</div>
-              <input type="text" placeholder="π.χ. άδεια 13-24/07" style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:16}} value={manualAbsence.text} onChange={e=>setManualAbsence(p=>({...p,text:e.target.value}))}/>
+              <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Έως (προαιρετικό — για εύρος ημερών)</div>
+              <input type="date" style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:8}} value={manualAbsence.dateTo} onChange={e=>setManualAbsence(p=>({...p,dateTo:e.target.value}))}/>
+              <div style={{fontSize:11,color:"#556",marginBottom:14,lineHeight:1.4}}>Θα καταχωρηθούν αυτόματα μόνο οι εργάσιμες ημέρες (Δευτέρα-Παρασκευή) μέσα στο εύρος — τα Σαββατοκύριακα παραλείπονται.</div>
+              <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Περιγραφή (προαιρετικό)</div>
+              <input type="text" placeholder="π.χ. κανονική άδεια" style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:16}} value={manualAbsence.text} onChange={e=>setManualAbsence(p=>({...p,text:e.target.value}))}/>
               <button style={{width:"100%",background:"#00e5a0",border:"none",borderRadius:12,padding:"12px",fontSize:14,fontWeight:800,color:"#0a0f1e",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>saveManualAbsence(manualEntryDriverId)}>
                 ✅ Καταχώρηση
               </button>
