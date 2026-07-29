@@ -488,6 +488,8 @@ function App() {
   const [manualAbsence, setManualAbsence] = useState({ type:"absence", date:"", dateTo:"", text:"" });
   const [manualEntryDriverId, setManualEntryDriverId] = useState(null);
   const [newDriverOpen, setNewDriverOpen] = useState(false);
+  const [newEntryType, setNewEntryType] = useState("driver");
+  const [newPartnerParentId, setNewPartnerParentId] = useState(null);
   const [newDriver, setNewDriver] = useState({ name:"", phone:"", moto:"", motoType:"company", area:"", contract_hours_week:"40", work_days:5 });
   const [newPartnerOpen, setNewPartnerOpen] = useState(false);
   const [newPartner, setNewPartner] = useState({ name:"", role:"", rate:"9.50", notes:"" });
@@ -982,13 +984,22 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
 
   const saveNewPartner = () => {
     if (!newPartner.name.trim()) { notify("Βάλε τουλάχιστον όνομα","warning"); return; }
-    const record = { name:newPartner.name.trim(), role:newPartner.role.trim()||"Συνεργάτης", rate:parseFloat(newPartner.rate)||9.50, notes:newPartner.notes.trim() };
+    let role = newPartner.role.trim();
+    if (newEntryType==="contractor" && !role) role = "Εργολάβος (ο ίδιος)";
+    if (newEntryType==="partner" && !role) role = "Εξωτερικός Συνεργάτης";
+    if (newEntryType==="contractor_driver") {
+      const parent = partners.find(p=>p.id===newPartnerParentId);
+      if (!parent) { notify("Διάλεξε ποιανού εργολάβου είναι ο οδηγός","warning"); return; }
+      role = `Οδηγός ${parent.name}`;
+    }
+    const record = { name:newPartner.name.trim(), role:role||"Συνεργάτης", rate:parseFloat(newPartner.rate)||9.50, notes:newPartner.notes.trim() };
     supabase.from('partners').insert(record).select().then(({data}) => {
       if (data && data[0]) setPartners(prev => [...prev, data[0]]);
     });
     notify(`Νέος συνεργάτης: ${record.name} ✓`,"success");
     addLog(`Προσθήκη νέου συνεργάτη: ${record.name} (${record.role})`, "partner", null);
     setNewPartner({ name:"", role:"", rate:"9.50", notes:"" });
+    setNewPartnerParentId(null);
     setNewPartnerOpen(false);
   };
 
@@ -1790,32 +1801,70 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
         <div style={S.overlay}>
           <div style={S.modal}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 16px 12px",borderBottom:"1px solid #1e2a4a"}}>
-              <span style={{fontWeight:800,fontSize:16,color:"#00e5a0"}}>+ Νέος Οδηγός</span>
+              <span style={{fontWeight:800,fontSize:16,color:"#00e5a0"}}>+ Νέο Άτομο</span>
               <button style={{background:"none",border:"none",color:"#556",cursor:"pointer",fontSize:20}} onClick={()=>setNewDriverOpen(false)}>✕</button>
             </div>
             <div style={{padding:16,overflowY:"auto"}}>
-              <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Όνομα</div>
-              <input type="text" placeholder="π.χ. Παπαδόπουλος Γιώργος" style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:14}} value={newDriver.name} onChange={e=>setNewDriver(p=>({...p,name:e.target.value}))}/>
-              <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Τηλέφωνο</div>
-              <input type="text" placeholder="69XXXXXXXX" style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:14}} value={newDriver.phone} onChange={e=>setNewDriver(p=>({...p,phone:e.target.value}))}/>
-              <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Μηχανάκι</div>
-              <input type="text" placeholder="π.χ. ΒΡΕ 337 ή ΔΙΚΟ ΤΟΥ" style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:8}} value={newDriver.moto} onChange={e=>setNewDriver(p=>({...p,moto:e.target.value}))}/>
-              <div style={{display:"flex",gap:8,marginBottom:14}}>
-                <button style={{flex:1,borderRadius:20,padding:"9px 10px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:"none",background:newDriver.motoType==="company"?"#5b8cff":"#1a2540",color:newDriver.motoType==="company"?"#0a0f1e":"#778"}} onClick={()=>setNewDriver(p=>({...p,motoType:"company"}))}>Εταιρικό</button>
-                <button style={{flex:1,borderRadius:20,padding:"9px 10px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:"none",background:newDriver.motoType==="own"?"#5b8cff":"#1a2540",color:newDriver.motoType==="own"?"#0a0f1e":"#778"}} onClick={()=>setNewDriver(p=>({...p,motoType:"own"}))}>Ιδιόκτητο</button>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
+                <button style={{borderRadius:20,padding:"9px 6px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:"none",background:newEntryType==="driver"?"#00e5a0":"#1a2540",color:newEntryType==="driver"?"#0a0f1e":"#778"}} onClick={()=>setNewEntryType("driver")}>Μισθωτός</button>
+                <button style={{borderRadius:20,padding:"9px 6px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:"none",background:newEntryType==="contractor"?"#00e5a0":"#1a2540",color:newEntryType==="contractor"?"#0a0f1e":"#778"}} onClick={()=>setNewEntryType("contractor")}>Εργολάβος</button>
+                <button style={{borderRadius:20,padding:"9px 6px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:"none",background:newEntryType==="partner"?"#00e5a0":"#1a2540",color:newEntryType==="partner"?"#0a0f1e":"#778"}} onClick={()=>setNewEntryType("partner")}>Συνεργάτης</button>
+                <button style={{borderRadius:20,padding:"9px 6px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:"none",background:newEntryType==="contractor_driver"?"#00e5a0":"#1a2540",color:newEntryType==="contractor_driver"?"#0a0f1e":"#778"}} onClick={()=>setNewEntryType("contractor_driver")}>Οδηγός Εργολάβου</button>
               </div>
-              <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Περιοχή</div>
-              <input type="text" placeholder="π.χ. Καλλιθέα" style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:14}} value={newDriver.area} onChange={e=>setNewDriver(p=>({...p,area:e.target.value}))}/>
-              <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Σύμβαση (ώρες/βδομάδα)</div>
-              <input type="number" style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:14}} value={newDriver.contract_hours_week} onChange={e=>setNewDriver(p=>({...p,contract_hours_week:e.target.value}))}/>
-              <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Ημέρες εργασίας/βδομάδα</div>
-              <div style={{display:"flex",gap:8,marginBottom:16}}>
-                <button style={{flex:1,borderRadius:20,padding:"9px 10px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:"none",background:newDriver.work_days===5?"#5b8cff":"#1a2540",color:newDriver.work_days===5?"#0a0f1e":"#778"}} onClick={()=>setNewDriver(p=>({...p,work_days:5}))}>Πενθήμερο (Δευ-Παρ)</button>
-                <button style={{flex:1,borderRadius:20,padding:"9px 10px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:"none",background:newDriver.work_days===6?"#5b8cff":"#1a2540",color:newDriver.work_days===6?"#0a0f1e":"#778"}} onClick={()=>setNewDriver(p=>({...p,work_days:6}))}>Εξαήμερο (Δευ-Σαβ)</button>
-              </div>
-              <button style={{width:"100%",background:"#00e5a0",border:"none",borderRadius:12,padding:"12px",fontSize:14,fontWeight:800,color:"#0a0f1e",cursor:"pointer",fontFamily:"inherit"}} onClick={saveNewDriver}>
-                ✅ Προσθήκη Οδηγού
-              </button>
+
+              {newEntryType==="driver" ? (
+                <>
+                  <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Όνομα</div>
+                  <input type="text" placeholder="π.χ. Παπαδόπουλος Γιώργος" style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:14}} value={newDriver.name} onChange={e=>setNewDriver(p=>({...p,name:e.target.value}))}/>
+                  <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Τηλέφωνο</div>
+                  <input type="text" placeholder="69XXXXXXXX" style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:14}} value={newDriver.phone} onChange={e=>setNewDriver(p=>({...p,phone:e.target.value}))}/>
+                  <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Μηχανάκι</div>
+                  <input type="text" placeholder="π.χ. ΒΡΕ 337 ή ΔΙΚΟ ΤΟΥ" style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:8}} value={newDriver.moto} onChange={e=>setNewDriver(p=>({...p,moto:e.target.value}))}/>
+                  <div style={{display:"flex",gap:8,marginBottom:14}}>
+                    <button style={{flex:1,borderRadius:20,padding:"9px 10px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:"none",background:newDriver.motoType==="company"?"#5b8cff":"#1a2540",color:newDriver.motoType==="company"?"#0a0f1e":"#778"}} onClick={()=>setNewDriver(p=>({...p,motoType:"company"}))}>Εταιρικό</button>
+                    <button style={{flex:1,borderRadius:20,padding:"9px 10px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:"none",background:newDriver.motoType==="own"?"#5b8cff":"#1a2540",color:newDriver.motoType==="own"?"#0a0f1e":"#778"}} onClick={()=>setNewDriver(p=>({...p,motoType:"own"}))}>Ιδιόκτητο</button>
+                  </div>
+                  <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Περιοχή</div>
+                  <input type="text" placeholder="π.χ. Καλλιθέα" style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:14}} value={newDriver.area} onChange={e=>setNewDriver(p=>({...p,area:e.target.value}))}/>
+                  <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Σύμβαση (ώρες/βδομάδα)</div>
+                  <input type="number" style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:14}} value={newDriver.contract_hours_week} onChange={e=>setNewDriver(p=>({...p,contract_hours_week:e.target.value}))}/>
+                  <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Ημέρες εργασίας/βδομάδα</div>
+                  <div style={{display:"flex",gap:8,marginBottom:16}}>
+                    <button style={{flex:1,borderRadius:20,padding:"9px 10px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:"none",background:newDriver.work_days===5?"#5b8cff":"#1a2540",color:newDriver.work_days===5?"#0a0f1e":"#778"}} onClick={()=>setNewDriver(p=>({...p,work_days:5}))}>Πενθήμερο (Δευ-Παρ)</button>
+                    <button style={{flex:1,borderRadius:20,padding:"9px 10px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:"none",background:newDriver.work_days===6?"#5b8cff":"#1a2540",color:newDriver.work_days===6?"#0a0f1e":"#778"}} onClick={()=>setNewDriver(p=>({...p,work_days:6}))}>Εξαήμερο (Δευ-Σαβ)</button>
+                  </div>
+                  <button style={{width:"100%",background:"#00e5a0",border:"none",borderRadius:12,padding:"12px",fontSize:14,fontWeight:800,color:"#0a0f1e",cursor:"pointer",fontFamily:"inherit"}} onClick={saveNewDriver}>
+                    ✅ Προσθήκη Οδηγού
+                  </button>
+                </>
+              ) : (
+                <>
+                  {newEntryType==="contractor_driver" && (
+                    <>
+                      <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Ποιανού εργολάβου είναι ο οδηγός;</div>
+                      <select style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:14}} value={newPartnerParentId||""} onChange={e=>setNewPartnerParentId(parseInt(e.target.value,10)||null)}>
+                        <option value="">— Επίλεξε εργολάβο —</option>
+                        {partners.filter(p=>(p.role||"").toLowerCase().includes("εργολάβος")).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                    </>
+                  )}
+                  <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Όνομα</div>
+                  <input type="text" placeholder="π.χ. Νίκος Παπαδόπουλος" style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:14}} value={newPartner.name} onChange={e=>setNewPartner(p=>({...p,name:e.target.value}))}/>
+                  {newEntryType!=="contractor_driver" && (
+                    <>
+                      <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Ρόλος {newEntryType==="contractor"?"(π.χ. Εργολάβος (ο ίδιος))":newEntryType==="partner"?"(π.χ. Εξωτερικός Συνεργάτης)":""}</div>
+                      <input type="text" placeholder={newEntryType==="contractor"?"Εργολάβος (ο ίδιος)":"Εξωτερικός Συνεργάτης"} style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:14}} value={newPartner.role} onChange={e=>setNewPartner(p=>({...p,role:e.target.value}))}/>
+                    </>
+                  )}
+                  <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Τιμή/ώρα (€)</div>
+                  <input type="number" step="0.1" style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:14}} value={newPartner.rate} onChange={e=>setNewPartner(p=>({...p,rate:e.target.value}))}/>
+                  <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Σημειώσεις</div>
+                  <input type="text" placeholder="π.χ. Intercars Αιγάλεω" style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:16}} value={newPartner.notes} onChange={e=>setNewPartner(p=>({...p,notes:e.target.value}))}/>
+                  <button style={{width:"100%",background:"#00e5a0",border:"none",borderRadius:12,padding:"12px",fontSize:14,fontWeight:800,color:"#0a0f1e",cursor:"pointer",fontFamily:"inherit"}} onClick={saveNewPartner}>
+                    ✅ Προσθήκη
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
