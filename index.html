@@ -228,19 +228,27 @@ async function callAllyra(sys, history, newMsg, executeTool) {
       method:"POST", headers:{"Content-Type":"application/json"},
       body:JSON.stringify({ system: sys, messages, tools: ALLYRA_TOOLS }),
     });
-    const d = await res.json();
+    let d;
+    try { d = await res.json(); } catch(parseErr) {
+      throw new Error(`Μη έγκυρη απάντηση από τον server (HTTP ${res.status}).`);
+    }
+    if (!res.ok || d.error || d.type==="error") {
+      const apiMsg = d.error?.message || d.error || `HTTP ${res.status}`;
+      throw new Error(`Σφάλμα API: ${apiMsg}`);
+    }
     const content = d.content || [];
     const toolUses = content.filter(b=>b.type==="tool_use");
     if (toolUses.length===0) {
       const textBlock = content.find(b=>b.type==="text");
-      return textBlock ? textBlock.text : "Δεν κατάλαβα. Δοκίμασε ξανά.";
+      return textBlock ? textBlock.text : "Η γραμματέα απάντησε χωρίς κείμενο (πιθανό πρόβλημα μορφοποίησης) — δοκίμασε ξανά.";
     }
     messages.push({ role:"assistant", content });
-    const toolResults = toolUses.map(tu => ({
-      type:"tool_result",
-      tool_use_id: tu.id,
-      content: JSON.stringify(executeTool(tu.name, tu.input||{}))
-    }));
+    const toolResults = toolUses.map(tu => {
+      let result;
+      try { result = executeTool(tu.name, tu.input||{}); }
+      catch(toolErr) { result = { error: `Σφάλμα εργαλείου ${tu.name}: ${toolErr.message}` }; }
+      return { type:"tool_result", tool_use_id: tu.id, content: JSON.stringify(result) };
+    });
     messages.push({ role:"user", content: toolResults });
   }
   return "Δεν μπόρεσα να ολοκληρώσω την αναζήτηση, δοκίμασε ξανά με πιο συγκεκριμένη ερώτηση.";
@@ -509,6 +517,12 @@ function App() {
 
   const notify = (text, type="info") => { setNotif({text,type}); setTimeout(()=>setNotif(null),4000); };
 
+  const notifySupaError = (res, label) => {
+    if (res && res.error) {
+      notify(`⚠️ Αποτυχία αποθήκευσης (${label}): ${res.error.message||res.error}`, "warning");
+    }
+  };
+
   const addLog = (text, type, driverId=null, customDate=null) => {
     let ts;
     if (customDate) {
@@ -519,7 +533,7 @@ function App() {
     }
     const newEntry = {id:Date.now(), ts, type, text, driverId};
     setLog(p=>[newEntry,...p]);
-    supabase.from('log').insert({ ts, type, text, driverid:driverId }).then(() => {});
+    supabase.from('log').insert({ ts, type, text, driverid:driverId }).then(res=>notifySupaError(res,'ιστορικό'));
   };
 
   const buildPrompt = useCallback(() => {
@@ -681,7 +695,9 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
       if (extractIdx !== -1) {
         const lastBracket = workingText.lastIndexOf("]");
         const jsonPart = workingText.slice(extractIdx + "[EXTRACT:".length, lastBracket);
-        try { extractData = JSON.parse(jsonPart); } catch(err) {}
+        try { extractData = JSON.parse(jsonPart); } catch(err) {
+          notify("⚠️ Η γραμματέα προσπάθησε να καταγράψει δεδομένα από φωτογραφία αλλά η μορφή ήταν λανθασμένη (τεχνικό σφάλμα) — δοκίμασε ξανά", "warning");
+        }
         workingText = workingText.slice(0, extractIdx).trim();
       }
 
@@ -717,7 +733,7 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
               let coercedValue = action.value;
               if (action.field === "contract_hours_week") coercedValue = parseInt(action.value, 10) || 40;
               setDrivers(prev => prev.map(d => d.id === action.id ? {...d, [action.field]: coercedValue, ...extraFields} : d));
-              supabase.from('drivers').update({ [action.field]: coercedValue, ...extraFields }).eq('id', action.id).then(() => {});
+              supabase.from('drivers').update({ [action.field]: coercedValue, ...extraFields }).eq('id', action.id).then(res=>notifySupaError(res,'ενημέρωση οδηγού'));
               actionDriverId = action.id;
               if (action.field === "status") {
                 const label = action.value === "terminated" ? "Αποχώρησε/Απολύθηκε" : action.value === "absent" ? "Απών" : "Ενεργός";
@@ -732,11 +748,11 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
           if (action.type === "assign_driver") {
             if (action.removeProjectId) {
               setAssignments(prev => prev.filter(a => !(a.driverId===action.driverId && a.projectId===action.removeProjectId)));
-              supabase.from('assignments').delete().eq('driverid', action.driverId).eq('projectid', action.removeProjectId).then(() => {});
+              supabase.from('assignments').delete().eq('driverid', action.driverId).eq('projectid', action.removeProjectId).then(res=>notifySupaError(res,'αφαίρεση ανάθεσης'));
             }
             const newAsg = { driverId:action.driverId, projectId:action.projectId, shift:action.shift||"", days:action.days||"" };
             setAssignments(prev => [...prev, newAsg]);
-            supabase.from('assignments').insert({ driverid:action.driverId, projectid:action.projectId, shift:action.shift||"", days:action.days||"" }).then(() => {});
+            supabase.from('assignments').insert({ driverid:action.driverId, projectid:action.projectId, shift:action.shift||"", days:action.days||"" }).then(res=>notifySupaError(res,'ανάθεση'));
             actionDriverId = action.driverId;
             notify("Ανάθεση οδηγού καταχωρήθηκε ✓","success");
           }
@@ -746,14 +762,15 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
             const finalDate = customLogDate || new Date().toISOString().slice(0,10);
             const entry = { driverId:action.driverId, date:finalDate, projectId:action.projectId||null, hours:finalHours, note:action.note||txt };
             setDailyHours(prev => [entry, ...prev]);
-            supabase.from('daily_hours').insert({ driverid:action.driverId, date:finalDate, projectid:action.projectId||null, hours:finalHours, note:action.note||txt }).then(() => {});
+            supabase.from('daily_hours').insert({ driverid:action.driverId, date:finalDate, projectid:action.projectId||null, hours:finalHours, note:action.note||txt }).then(res=>notifySupaError(res,'καταγραφή ωρών'));
             actionDriverId = action.driverId;
             notify(`Καταγράφηκαν ${finalHours} ώρες (${finalDate}) ✓`, "success");
           }
           if (action.type === "add_partner") {
             const newPartner = { name:action.name||"—", role:action.role||"Συνεργάτης", rate:parseFloat(action.rate)||9.50, notes:action.notes||"" };
-            supabase.from('partners').insert(newPartner).select().then(({data}) => {
+            supabase.from('partners').insert(newPartner).select().then(({data,error}) => {
               if (data && data[0]) setPartners(prev => [...prev, data[0]]);
+              if (error) notify(`⚠️ Αποτυχία προσθήκης συνεργάτη: ${error.message}`, "warning");
             });
             notify(`Νέος συνεργάτης: ${newPartner.name} ✓`, "success");
             addLog(`Προσθήκη νέου συνεργάτη: ${newPartner.name} (${newPartner.role})`, "partner", null, customLogDate);
@@ -762,17 +779,19 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
             let coercedValue = action.value;
             if (action.field === "rate") coercedValue = parseFloat(action.value) || 0;
             setPartners(prev => prev.map(p => p.id === action.id ? {...p, [action.field]: coercedValue} : p));
-            supabase.from('partners').update({ [action.field]: coercedValue }).eq('id', action.id).then(() => {});
+            supabase.from('partners').update({ [action.field]: coercedValue }).eq('id', action.id).then(res=>notifySupaError(res,'ενημέρωση συνεργάτη'));
             notify("Ενημέρωση συνεργάτη καταχωρήθηκε ✓","success");
             addLog(`Ενημέρωση συνεργάτη (id:${action.id}): ${action.field} → ${coercedValue}`, "partner", null, customLogDate);
           }
-        } catch(err) {}
+        } catch(err) {
+          notify(`⚠️ Η ενέργεια της γραμματέας απέτυχε (τεχνικό σφάλμα: ${err.message}) — τίποτα δεν καταχωρήθηκε`, "warning");
+        }
       }
       setMessages(p=>[...p, {role:"assistant", text:cleanText}]);
       supabase.from('chat_messages').insert([
         { role:"user", text:displayText },
         { role:"assistant", text:cleanText }
-      ]).then(() => {});
+      ]).then(res=>notifySupaError(res,'αποθήκευση συνομιλίας'));
       const lo=txt.toLowerCase();
       if (lo.includes("απολύ")||lo.includes("απολυ")||lo.includes("παραιτ")||lo.includes("αποχώρησ")||lo.includes("αποχωρησ")) addLog(txt,"terminated",actionDriverId,customLogDate);
       else if (hadLogHoursAction) addLog(txt,"hours",actionDriverId,customLogDate);
@@ -828,7 +847,11 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
       } else if (imageAttachment && !(extractData && Array.isArray(extractData.entries))) {
         notify("⚠️ Δεν εντόπισα δεδομένα προς καταχώρηση — δοκίμασε να στείλεις ξανά τη φωτογραφία", "warning");
       }
-    } catch(e) { setMessages(p=>[...p,{role:"assistant",text:"Σφάλμα σύνδεσης."}]); }
+    } catch(e) {
+      const errMsg = e?.message || "Άγνωστο σφάλμα";
+      setMessages(p=>[...p,{role:"assistant",text:`⚠️ Σφάλμα: ${errMsg}`}]);
+      notify(`⚠️ ${errMsg}`, "warning");
+    }
     finally { setThinking(false); }
   }, [buildPrompt, drivers, assignments, partners, executeAllyraTool, extractEntries, dailyHours]);
 
@@ -908,7 +931,7 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
       const entry = { driverId:e.driverId, date:e.date, projectId:e.projectId||null, hours, note:`Από φωτογραφία (${e.driverNameRaw||""})${noteExtra}`, start_time:e.startTime||null, end_time:e.endTime||null };
       alreadySeen.push(entry);
       setDailyHours(prev => [entry, ...prev]);
-      supabase.from('daily_hours').insert({ driverid:e.driverId, date:e.date, projectid:e.projectId||null, hours, note:entry.note, start_time:e.startTime||null, end_time:e.endTime||null }).then(() => {});
+      supabase.from('daily_hours').insert({ driverid:e.driverId, date:e.date, projectid:e.projectId||null, hours, note:entry.note, start_time:e.startTime||null, end_time:e.endTime||null }).then(res=>notifySupaError(res,'καταχώρηση από φωτογραφία'));
       addLog(`Καταχώρηση από φωτογραφία: ${drivers.find(d=>d.id===e.driverId)?.name||e.driverNameRaw} — ${hours} ώρες${noteExtra}`, "hours", e.driverId, e.date);
       savedCount++;
     });
@@ -921,7 +944,7 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
   const deleteDailyHour = (entryId) => {
     if (!entryId) { notify("Αυτή η εγγραφή δεν έχει αναγνωριστικό — ανανέωσε τη σελίδα","warning"); return; }
     setDailyHours(prev => prev.filter(h => h.id !== entryId));
-    supabase.from('daily_hours').delete().eq('id', entryId).then(() => {});
+    supabase.from('daily_hours').delete().eq('id', entryId).then(res=>notifySupaError(res,'διαγραφή καταγραφής'));
     notify("Η καταγραφή διαγράφηκε ✓","success");
   };
 
@@ -939,7 +962,7 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
     const note = `Χειροκίνητη καταχώρηση${hasTimes?` (${manualHour.startTime}-${manualHour.endTime})`:""}`;
     const entry = { driverId, date:manualHour.date, projectId:manualHour.projectId||null, hours, note, start_time:manualHour.startTime||null, end_time:manualHour.endTime||null };
     setDailyHours(prev => [entry, ...prev]);
-    supabase.from('daily_hours').insert({ driverid:driverId, date:manualHour.date, projectid:manualHour.projectId||null, hours, note, start_time:manualHour.startTime||null, end_time:manualHour.endTime||null }).then(() => {});
+    supabase.from('daily_hours').insert({ driverid:driverId, date:manualHour.date, projectid:manualHour.projectId||null, hours, note, start_time:manualHour.startTime||null, end_time:manualHour.endTime||null }).then(res=>notifySupaError(res,'χειροκίνητη καταχώρηση ώρας'));
     addLog(`${note}: ${drivers.find(d=>d.id===driverId)?.name||""} — ${hours} ώρες`, "hours", driverId, manualHour.date);
     notify("Καταχωρήθηκε ✓","success");
     setManualHour({ date:"", startTime:"", endTime:"", hours:"", projectId:null });
@@ -976,7 +999,7 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
 
   const changeDriverWorkDays = (driverId, newWorkDays) => {
     setDrivers(prev => prev.map(d => d.id===driverId ? {...d, work_days:newWorkDays} : d));
-    supabase.from('drivers').update({ work_days:newWorkDays }).eq('id', driverId).then(() => {});
+    supabase.from('drivers').update({ work_days:newWorkDays }).eq('id', driverId).then(res=>notifySupaError(res,'ημέρες εργασίας'));
     notify(`Ημέρες εργασίας: ${newWorkDays===6?"Εξαήμερο":"Πενθήμερο"} ✓`,"success");
   };
 
@@ -988,7 +1011,7 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
       extraFields = { terminated_date: null, terminated_reason: null };
     }
     setDrivers(prev => prev.map(d => d.id===driverId ? {...d, status:newStatus, ...extraFields} : d));
-    supabase.from('drivers').update({ status:newStatus, ...extraFields }).eq('id', driverId).then(() => {});
+    supabase.from('drivers').update({ status:newStatus, ...extraFields }).eq('id', driverId).then(res=>notifySupaError(res,'status οδηγού'));
     const label = newStatus==="terminated"?"Αποχώρησε/Απολύθηκε":newStatus==="absent"?"Απών":"Ενεργός";
     notify(`Status: ${label} ✓`,"success");
   };
@@ -1005,8 +1028,9 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
       contract_hours_week: parseInt(newDriver.contract_hours_week,10)||40,
       work_days: newDriver.work_days===6?6:5
     };
-    supabase.from('drivers').insert(record).select().then(({data}) => {
+    supabase.from('drivers').insert(record).select().then(({data,error}) => {
       if (data && data[0]) setDrivers(prev => [...prev, data[0]]);
+      if (error) notify(`⚠️ Αποτυχία προσθήκης οδηγού: ${error.message}`, "warning");
     });
     notify(`Νέος οδηγός: ${record.name} ✓`,"success");
     addLog(`Προσθήκη νέου οδηγού: ${record.name}`, "system", null);
@@ -1025,8 +1049,9 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
       role = `Οδηγός ${parent.name}`;
     }
     const record = { name:newPartner.name.trim(), role:role||"Συνεργάτης", rate:parseFloat(newPartner.rate)||9.50, notes:newPartner.notes.trim() };
-    supabase.from('partners').insert(record).select().then(({data}) => {
+    supabase.from('partners').insert(record).select().then(({data,error}) => {
       if (data && data[0]) setPartners(prev => [...prev, data[0]]);
+      if (error) notify(`⚠️ Αποτυχία προσθήκης συνεργάτη: ${error.message}`, "warning");
     });
     notify(`Νέος συνεργάτης: ${record.name} ✓`,"success");
     addLog(`Προσθήκη νέου συνεργάτη: ${record.name} (${record.role})`, "partner", null);
