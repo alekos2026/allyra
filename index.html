@@ -220,7 +220,7 @@ const ALLYRA_TOOLS = [
 
 async function callAllyra(sys, history, newMsg, executeTool) {
   let messages = [
-    ...history.slice(-10).map(m => ({ role: m.role==="user"?"user":"assistant", content: m.text })),
+    ...history.slice(-24).map(m => ({ role: m.role==="user"?"user":"assistant", content: m.text })),
     { role:"user", content:newMsg }
   ];
   for (let i=0; i<4; i++) {
@@ -487,6 +487,12 @@ function App() {
     const n = new Date();
     return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}`;
   });
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [calendarProjectId, setCalendarProjectId] = useState(null);
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const n = new Date();
+    return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}`;
+  });
   const [attachedImage, setAttachedImage] = useState(null);
   const [extractOpen, setExtractOpen] = useState(false);
   const [extractEntries, setExtractEntries] = useState([]);
@@ -582,6 +588,7 @@ function App() {
 
     return `Είσαι η ALLYRA, ψηφιακή AI γραμματέας courier εταιρείας, μόνο ελληνικά. Χρήστης: Alex (διευθυντής).
 ΣΗΜΑΝΤΙΚΟ ΓΙΑ ΤΗ ΜΝΗΜΗ: Όλες οι καταχωρήσεις (οδηγοί, ώρες, άδειες, αναθέσεις, συνεργάτες) ΚΑΙ το ιστορικό αυτής της συνομιλίας αποθηκεύονται ΜΟΝΙΜΑ στη βάση δεδομένων του συστήματος (Supabase) και συγχρονίζονται σε όλες τις συσκευές. ΠΟΤΕ μην πεις στον χρήστη ότι "δεν έχεις μνήμη μεταξύ συνεδριών" ή ότι "θα ξεχάσεις τη συζήτηση" — αυτό ΕΙΝΑΙ ΛΑΘΟΣ. Όταν ο χρήστης λέει "κράτα το στη μνήμη" ή "θα επανέλθω αργότερα", καθησύχασέ τον ότι τα δεδομένα και το ιστορικό παραμένουν αποθηκευμένα και θα είναι διαθέσιμα όταν επιστρέψει. Η μόνη εξαίρεση: οι ΦΩΤΟΓΡΑΦΙΕΣ που στέλνει δεν αποθηκεύονται ως εικόνες (μόνο τα δεδομένα που εξάγονται από αυτές) — αν χρειαστεί να ξαναδιαβάσεις μια φωτογραφία, πρέπει να την ξαναστείλει.
+ΚΑΝΟΝΑΣ ΠΡΟΤΕΡΑΙΟΤΗΤΑΣ ΔΕΔΟΜΕΝΩΝ (ΠΟΛΥ ΣΗΜΑΝΤΙΚΟ): Η λίστα ΑΝΑΘΕΣΕΩΝ (assignments) στα ΟΔΗΓΟΙ παραπάνω δείχνει μόνο το ΤΥΠΙΚΟ/ΠΡΟΕΠΙΛΕΓΜΕΝΟ πρόγραμμα κάθε οδηγού — ΔΕΝ είναι αμετάβλητη αλήθεια για κάθε συγκεκριμένη μέρα. Όποτε ο χρήστης σου δίνει ΝΕΑ, ΣΥΓΚΕΚΡΙΜΕΝΗ πληροφορία για μια μέρα/βάρδια/project (μέσω φωτογραφίας ή κειμένου — π.χ. διαφορετικό project, διαφορετικό ωράριο, διαφορετικό όνομα από το συνηθισμένο), αυτή η ΝΕΑ πληροφορία υπερισχύει ΠΑΝΤΑ του τυπικού προγράμματος. ΜΗΝ "διορθώνεις", ΜΗΝ αμφισβητείς, και ΜΗΝ επιστρέφεις στο τυπικό πρόγραμμα βασιζόμενος σε αυτό που θα περίμενες — καταχώρησε ό,τι δείχνει η νέα πληροφορία, ό,τι κι αν λέει η τυπική ανάθεση. Η τυπική ανάθεση είναι απλά ένα σημείο αναφοράς/υπόθεση για μέρες χωρίς νεότερα δεδομένα, όχι κανόνας που υπερισχύει.
 ΣΗΜΕΡΑ είναι: ${todayStr} (${today.toLocaleDateString("el-GR")}). ΑΥΡΙΟ είναι: ${tomorrowStr}. ΜΕΘΑΥΡΙΟ είναι: ${dayAfterStr}. ΧΘΕΣ ήταν: ${yesterdayStr}. ΠΡΟΧΘΕΣ ήταν: ${dayBeforeStr}.
 ΟΔΗΓΟΙ(${drivers.length}):
 ${dl}
@@ -1221,6 +1228,30 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
     return count>0 ? count : 5;
   };
 
+  const computeProjectCalendar = (projectId, monthStr) => {
+    const project = PROJECTS.find(p=>p.id===projectId);
+    if (!project) return null;
+    const [yy,mm] = monthStr.split("-").map(Number);
+    const daysInMonth = new Date(yy, mm, 0).getDate();
+    const WEEKDAY_NAMES = ["Κυρ","Δευ","Τρι","Τετ","Πεμ","Παρ","Σαβ"];
+
+    const entries = dailyHours.filter(h => h.projectId===projectId && h.date && h.date.startsWith(monthStr));
+
+    const days = [];
+    for (let day=1; day<=daysInMonth; day++) {
+      const dateStr = `${yy}-${String(mm).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+      const dateObj = new Date(yy, mm-1, day);
+      const dayEntries = entries.filter(e=>e.date===dateStr).map(e => {
+        const dr = drivers.find(d=>d.id===e.driverId);
+        const timeStr = (e.start_time && e.end_time) ? `${e.start_time}-${e.end_time}` : `${e.hours}ω`;
+        return { driverName: dr?dr.name:`(id:${e.driverId})`, timeStr, hours:e.hours };
+      });
+      days.push({ day, dateStr, weekday: WEEKDAY_NAMES[dateObj.getDay()], entries: dayEntries });
+    }
+
+    return { project, daysInMonth, days };
+  };
+
   const computeProjectMonthlyReport = (projectId, monthStr) => {
     const project = PROJECTS.find(p=>p.id===projectId);
     if (!project) return null;
@@ -1545,9 +1576,14 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
                     {p.rateSunNight && <span style={{fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20,background:"#ff6b6b22",color:"#ff6b6b",border:"1px solid #ff6b6b"}}>Κυρ+Νύχτα {fmtEur(p.rateSunNight)}</span>}
                   </div>
                   {pD.map((d,i)=><div key={i} style={S.cardSub}>👤 {d.name} · {d.shift} · {d.days}</div>)}
-                  <button style={{marginTop:8,background:"none",border:"none",color:"#f5c518",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0}} onClick={()=>{setInvoiceProjectId(p.id);setInvoiceOpen(true);}}>
-                    🧾 Μηνιαία Τιμολόγηση
-                  </button>
+                  <div style={{display:"flex",gap:14,marginTop:8}}>
+                    <button style={{background:"none",border:"none",color:"#f5c518",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0}} onClick={()=>{setInvoiceProjectId(p.id);setInvoiceOpen(true);}}>
+                      🧾 Μηνιαία Τιμολόγηση
+                    </button>
+                    <button style={{background:"none",border:"none",color:"#5b8cff",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0}} onClick={()=>{setCalendarProjectId(p.id);setCalendarOpen(true);}}>
+                      📅 Ημερολόγιο Καταγραφών
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -1793,6 +1829,52 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
                     <div style={{fontSize:10,color:"#556",marginTop:10,lineHeight:1.5}}>
                       ⚠️ Εκτιμώμενος υπολογισμός βάσει προγραμματισμένου ωραρίου + καταγεγραμμένων εξαιρέσεων. Δεν διαχωρίζει αυτόματα νυχτερινές/Κυριακή ώρες — να επαληθεύεται πριν την τιμολόγηση.
                     </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {calendarOpen && (
+        <div style={S.overlay}>
+          <div style={S.modal}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 16px 12px",borderBottom:"1px solid #1e2a4a"}}>
+              <span style={{fontWeight:800,fontSize:16,color:"#5b8cff"}}>📅 Ημερολόγιο Καταγραφών</span>
+              <button style={{background:"none",border:"none",color:"#556",cursor:"pointer",fontSize:20}} onClick={()=>setCalendarOpen(false)}>✕</button>
+            </div>
+            <div style={{padding:16,overflowY:"auto"}}>
+              <div style={{fontSize:10,color:"#556",marginBottom:14,lineHeight:1.5}}>Αυτό δείχνει ΑΚΡΙΒΩΣ ό,τι υπάρχει καταγεγραμμένο στη βάση δεδομένων — καμία επεξεργασία ή περίληψη από AI.</div>
+              <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Project</div>
+              <select style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:14}} value={calendarProjectId||""} onChange={e=>setCalendarProjectId(parseInt(e.target.value,10))}>
+                {PROJECTS.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Μήνας</div>
+              <input type="month" style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:10,padding:"10px 12px",color:"#e8eaf6",fontSize:14,fontFamily:"inherit",marginBottom:14}} value={calendarMonth} onChange={e=>setCalendarMonth(e.target.value)}/>
+
+              {calendarProjectId && (() => {
+                const cal = computeProjectCalendar(calendarProjectId, calendarMonth);
+                if (!cal) return null;
+                const missingCount = cal.days.filter(d=>d.entries.length===0).length;
+                return (
+                  <div>
+                    {missingCount>0 && (
+                      <div style={{background:"#ff6b6b11",border:"1px solid #ff6b6b",borderRadius:10,padding:10,marginBottom:14,fontSize:12,color:"#ff6b6b"}}>
+                        ⚠️ {missingCount} ημέρες χωρίς ΚΑΜΙΑ καταγραφή αυτό το μήνα
+                      </div>
+                    )}
+                    {cal.days.map(d => (
+                      <div key={d.dateStr} style={{...S.card,padding:10,marginBottom:6,opacity:d.entries.length===0?0.5:1}}>
+                        <div style={{fontSize:12,fontWeight:700,color:d.entries.length===0?"#ff6b6b":"#e8eaf6",marginBottom:4}}>
+                          {d.weekday} {String(d.day).padStart(2,"0")}/{calendarMonth.split("-")[1]}
+                          {d.entries.length===0 && " — καμία καταγραφή"}
+                        </div>
+                        {d.entries.map((e,i)=>(
+                          <div key={i} style={{fontSize:12,color:"#b0b8d0"}}>👤 {e.driverName} · {e.timeStr}</div>
+                        ))}
+                      </div>
+                    ))}
                   </div>
                 );
               })()}
