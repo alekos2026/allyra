@@ -559,6 +559,13 @@ function App() {
       return `- ${l.type==="leave"?"Άδεια":"Απουσία"}|${dr?dr.name:"—"}|${l.ts}|${l.text}`;
     }).join("\n");
 
+    const pendingEntriesContext = extractEntries.length>0 ? extractEntries.map((e,i) => {
+      const dr = e.driverId ? drivers.find(d=>d.id===e.driverId) : null;
+      const pr = e.projectId ? PROJECTS.find(p=>p.id===e.projectId) : null;
+      const timeStr = (e.startTime && e.endTime) ? `${e.startTime}-${e.endTime}` : `${e.hours}ω`;
+      return `${i}: ${dr?dr.name:("άγνωστο: \""+e.driverNameRaw+"\"")}|${e.date}|${timeStr}|${pr?pr.name:"χωρίς project"}`;
+    }).join("\n") : null;
+
     return `Είσαι η ALLYRA, ψηφιακή AI γραμματέας courier εταιρείας, μόνο ελληνικά. Χρήστης: Alex (διευθυντής).
 ΣΗΜΑΝΤΙΚΟ ΓΙΑ ΤΗ ΜΝΗΜΗ: Όλες οι καταχωρήσεις (οδηγοί, ώρες, άδειες, αναθέσεις, συνεργάτες) ΚΑΙ το ιστορικό αυτής της συνομιλίας αποθηκεύονται ΜΟΝΙΜΑ στη βάση δεδομένων του συστήματος (Supabase) και συγχρονίζονται σε όλες τις συσκευές. ΠΟΤΕ μην πεις στον χρήστη ότι "δεν έχεις μνήμη μεταξύ συνεδριών" ή ότι "θα ξεχάσεις τη συζήτηση" — αυτό ΕΙΝΑΙ ΛΑΘΟΣ. Όταν ο χρήστης λέει "κράτα το στη μνήμη" ή "θα επανέλθω αργότερα", καθησύχασέ τον ότι τα δεδομένα και το ιστορικό παραμένουν αποθηκευμένα και θα είναι διαθέσιμα όταν επιστρέψει. Η μόνη εξαίρεση: οι ΦΩΤΟΓΡΑΦΙΕΣ που στέλνει δεν αποθηκεύονται ως εικόνες (μόνο τα δεδομένα που εξάγονται από αυτές) — αν χρειαστεί να ξαναδιαβάσεις μια φωτογραφία, πρέπει να την ξαναστείλει.
 ΣΗΜΕΡΑ είναι: ${todayStr} (${today.toLocaleDateString("el-GR")}). ΑΥΡΙΟ είναι: ${tomorrowStr}. ΜΕΘΑΥΡΙΟ είναι: ${dayAfterStr}. ΧΘΕΣ ήταν: ${yesterdayStr}. ΠΡΟΧΘΕΣ ήταν: ${dayBeforeStr}.
@@ -572,7 +579,7 @@ ${prl}
 ${recentHours||"— καμία καταγραφή —"}
 ΠΡΟΣΦΑΤΕΣ ΑΠΟΥΣΙΕΣ/ΑΔΕΙΕΣ (μορφή: τύπος|όνομα|ημερομηνία|περιγραφή):
 ${recentAbsences||"— καμία —"}
-Όταν ο χρήστης ρωτάει για ώρες, τιμολόγηση ή πληρωμή συγκεκριμένης περιόδου, ΧΡΗΣΙΜΟΠΟΙΗΣΕ τις παραπάνω ΚΑΤΑΓΕΓΡΑΜΜΕΝΕΣ ΩΡΕΣ (όχι υποθέσεις). Οι παραπάνω λίστες δείχνουν μόνο τις πιο πρόσφατες καταγραφές (όχι όλες) — για ΑΚΡΙΒΗ και ΠΛΗΡΗ απάντηση σε συγκεκριμένη περίοδο/οδηγό/project, ΧΡΗΣΙΜΟΠΟΙΗΣΕ ΠΑΝΤΑ το εργαλείο search_daily_hours (για ώρες εργασίας) ή search_log (για απουσίες/άδειες/ιστορικό) πριν απαντήσεις, ώστε να έχεις πλήρη δεδομένα αντί να στηρίζεσαι μόνο στο απόσπασμα. Αν λείπουν κάποιες μέρες ακόμα και μετά την αναζήτηση, πες ξεκάθαρα ποιες ημερομηνίες έχεις και ποιες λείπουν, αντί να πεις γενικά "δεν έχω δεδομένα".
+${pendingEntriesContext ? `ΕΚΚΡΕΜΕΙΣ ΚΑΤΑΧΩΡΗΣΕΙΣ ΠΡΟΣ ΕΠΙΒΕΒΑΙΩΣΗ (από φωτογραφία, ΔΕΝ έχουν καταχωρηθεί ακόμα στη βάση — ο χρήστης πρέπει να πει "σωστά"/"καταχώρησε" για να αποθηκευτούν):\n${pendingEntriesContext}\nΑΝ Ο ΧΡΗΣΤΗΣ ΛΕΕΙ "σωστά", "καταχώρησε", "ναι" ή κάτι αντίστοιχο σχετικά με αυτές: ξαναβάλε ΑΚΡΙΒΩΣ τις ΙΔΙΕΣ εγγραφές (χωρίς αλλαγή) σε νέα γραμμή EXTRACT, ώστε να καταχωρηθούν οριστικά. ΑΝ Ο ΧΡΗΣΤΗΣ ΚΑΝΕΙ ΔΙΟΡΘΩΣΗ (π.χ. "ο Χ τελικά ήταν 17:15 όχι 17:00", "αυτό ήταν στο project Ψ", "ο Χ στη γραμμή 2 είναι ο Τάδε"): ενημέρωσε ΜΟΝΟ τη σχετική εγγραφή/ές και ξαναβάλε ΟΛΕΣ τις εγγραφές (διορθωμένες + οι υπόλοιπες αμετάβλητες) σε νέα γραμμή EXTRACT — ποτέ μη χάνεις εγγραφές που δεν αφορούσε η διόρθωση. ΑΝ Ο ΧΡΗΣΤΗΣ ΘΕΛΕΙ ΝΑ ΑΚΥΡΩΣΕΙ ΟΛΑ ΑΥΤΑ (π.χ. "άκυρο", "παράλειψέ τα"), βάλε [EXTRACT:{"entries":[]}] για να αδειάσει η εκκρεμότητα.\n` : ""}Όταν ο χρήστης ρωτάει για ώρες, τιμολόγηση ή πληρωμή συγκεκριμένης περιόδου, ΧΡΗΣΙΜΟΠΟΙΗΣΕ τις παραπάνω ΚΑΤΑΓΕΓΡΑΜΜΕΝΕΣ ΩΡΕΣ (όχι υποθέσεις). Οι παραπάνω λίστες δείχνουν μόνο τις πιο πρόσφατες καταγραφές (όχι όλες) — για ΑΚΡΙΒΗ και ΠΛΗΡΗ απάντηση σε συγκεκριμένη περίοδο/οδηγό/project, ΧΡΗΣΙΜΟΠΟΙΗΣΕ ΠΑΝΤΑ το εργαλείο search_daily_hours (για ώρες εργασίας) ή search_log (για απουσίες/άδειες/ιστορικό) πριν απαντήσεις, ώστε να έχεις πλήρη δεδομένα αντί να στηρίζεσαι μόνο στο απόσπασμα. Αν λείπουν κάποιες μέρες ακόμα και μετά την αναζήτηση, πες ξεκάθαρα ποιες ημερομηνίες έχεις και ποιες λείπουν, αντί να πεις γενικά "δεν έχω δεδομένα".
 RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κυρ€9.30. Ιδιόκτ+€1.20. Εργολάβος:€9.50(δικό τους)/€8.50(δικό μας).
 Απάντα σύντομα (max 4 προτάσεις).
 ΑΝ Ο ΧΡΗΣΤΗΣ ΑΝΑΦΕΡΕΙ "σήμερα","αύριο" ή "μεθαύριο", ΧΡΗΣΙΜΟΠΟΙΗΣΕ τις παραπάνω πραγματικές ημερομηνίες όταν περιγράφεις την αλλαγή.
@@ -593,8 +600,9 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
 [ACTION:{"type":"log_hours","driverId":<id>,"hours":<αριθμός_ωρών>,"projectId":<id_project_ή_null>,"note":"<σύντομη περιγραφή, π.χ. 09:00-12:00 αντί για 09:00-17:00>"}]
 Αν ο χρήστης αναφέρει προηγούμενη ημερομηνία γι' αυτή την καταγραφή, βάλε ΚΑΙ τη γραμμή [LOGDATE:YYYY-MM-DD] όπως παραπάνω.
 ΑΝ Ο ΧΡΗΣΤΗΣ ΣΟΥ ΣΤΕΙΛΕΙ ΦΩΤΟΓΡΑΦΙΑ με πρόγραμμα/παρουσιολόγιο ωρών εργασίας, διάβασέ την προσεκτικά και εξήγαγε για κάθε γραμμή: όνομα εργαζομένου (όπως γράφεται στη φωτογραφία, ακόμα κι αν είναι δυσανάγνωστο ή συντομογραφία), ημερομηνία (YYYY-MM-DD· αν η φωτογραφία δείχνει μόνο ημέρα/μήνα χωρίς έτος, υπόθεσε το τρέχον έτος), και ΩΡΑ ΕΙΣΟΔΟΥ και ΩΡΑ ΕΞΟΔΟΥ (μορφή HH:MM). Αν η φωτογραφία δείχνει μόνο σύνολο ωρών χωρίς ώρα εισόδου/εξόδου, άφησε τα κενά και βάλε μόνο το "hours". Προσπάθησε να ταιριάξεις το όνομα με έναν από τους παραπάνω ΟΔΗΓΟΥΣ ελέγχοντας ΚΑΙ το επώνυμο ΚΑΙ το μικρό όνομα (π.χ. αν κάποιος γράφεται μόνο με το μικρό του όνομα ή παραλλαγή του), και βάλε το σωστό id αν είσαι αρκετά σίγουρος, αλλιώς άφησε "driverId":null (μην μαντεύεις αν δεν είσαι σίγουρος). Αν ο ίδιος άνθρωπος εμφανίζεται με ελαφρώς διαφορετική γραφή σε διαφορετικές γραμμές (π.χ. λόγω OCR), αντιμετώπισέ τον ως τον ΙΔΙΟ οδηγό.
+ΠΡΟΣΟΧΗ ΣΕ ΥΠΟΚΑΤΑΣΤΑΣΕΙΣ: Αν σε μια συγκεκριμένη ημέρα/βάρδια/θέση της φωτογραφίας εμφανίζεται όνομα ΔΙΑΦΟΡΕΤΙΚΟ από τον οδηγό που κανονικά είναι ανατεθειμένος εκεί (π.χ. λόγω αντικατάστασης), ΜΗΝ υποθέσεις ότι πρόκειται για τον συνήθη/προγραμματισμένο οδηγό, και ΜΗΝ του αποδώσεις αυτόματα το ίδιο project μόνο επειδή βρίσκεται σε εκείνη τη θέση/στήλη — αντιμετώπισέ το ως ξεχωριστό, πιθανώς άγνωστο άτομο (driverId:null αν δεν ταιριάζει με βεβαιότητα), και άφησε το project κενό αν δεν είσαι σίγουρος, αντί να το "κληρονομήσεις" από τη θέση.
 ΣΗΜΑΝΤΙΚΟ ΓΙΑ ΤΗ ΜΟΡΦΗ ΤΗΣ ΑΠΑΝΤΗΣΗΣ: Γράψε μια ΚΑΘΑΡΗ, ΟΡΓΑΝΩΜΕΝΗ περίληψη του τι διάβασες, με μορφή: μία **έντονη επικεφαλίδα ημέρας** (π.χ. **Τετάρτη 01/07:**) ακολουθούμενη από bullet lines (- ) με ώρα και όνομα για κάθε εγγραφή εκείνης της ημέρας, ομαδοποιημένα ανά ημερομηνία. Αν κάποιο όνομα δεν αντιστοιχίστηκε με σιγουριά σε οδηγό, σημείωσέ το στο τέλος με ⚠️. ΑΥΤΟ ΕΙΝΑΙ ΚΡΙΣΙΜΟ: όποια εγγραφή αναφέρεις στο κείμενο, ΠΡΕΠΕΙ ΠΑΝΤΑ, ΧΩΡΙΣ ΚΑΜΙΑ ΕΞΑΙΡΕΣΗ, να τη συμπεριλάβεις ΚΑΙ στην παρακάτω γραμμή EXTRACT (ίδιος αριθμός εγγραφών με αυτές που περιέγραψες) — ποτέ μην περιγράφεις εγγραφές στο κείμενο χωρίς να τις συμπεριλάβεις ΚΑΙ στην EXTRACT γραμμή. Μετά βάλε ΥΠΟΧΡΕΩΤΙΚΑ στο ΑΠΟΛΥΤΟ ΤΕΛΟΣ της απάντησης (χωρίς να ακολουθεί τίποτα άλλο μετά) μία γραμμή ΑΚΡΙΒΩΣ σε αυτή τη μορφή:
-[EXTRACT:{"entries":[{"driverId":<id_ή_null>,"driverNameRaw":"<όνομα όπως γράφτηκε στη φωτογραφία>","date":"YYYY-MM-DD","startTime":"HH:MM ή κενό","endTime":"HH:MM ή κενό","hours":<αριθμός ή null αν έχεις startTime/endTime>}]}]
+[EXTRACT:{"entries":[{"driverId":<id_ή_null>,"driverNameRaw":"<όνομα όπως γράφτηκε στη φωτογραφία>","date":"YYYY-MM-DD","startTime":"HH:MM ή κενό","endTime":"HH:MM ή κενό","hours":<αριθμός ή null αν έχεις startTime/endTime>,"projectName":"<όνομα project αν αναφέρθηκε/διορθώθηκε από τον χρήστη, αλλιώς κενό>"}]}]
 Αν η φωτογραφία δεν δείχνει πρόγραμμα/ωράριο/παρουσιολόγιο εργασίας, ΜΗΝ βάζεις καμία EXTRACT γραμμή.
 ΑΝ Ο ΧΡΗΣΤΗΣ ΖΗΤΑΕΙ ΠΡΟΣΘΗΚΗ ΝΕΟΥ ΣΥΝΕΡΓΑΤΗ/ΕΡΓΟΛΑΒΟΥ/ΟΔΗΓΟΥ ΣΥΝΕΡΓΑΤΗ (π.χ. "πρόσθεσε νέο συνεργάτη Χ", "ήρθε νέος οδηγός του Μητούδη ονόματι Χ"), ΠΡΕΠΕΙ ΠΑΝΤΑ να συμπεριλάβεις ΣΤΟ ΤΕΛΟΣ μία γραμμή ΑΚΡΙΒΩΣ σε αυτή τη μορφή:
 [ACTION:{"type":"add_partner","name":"<όνομα>","role":"<ρόλος, π.χ. Οδηγός Μητούδη ή Εξωτερικός Συνεργάτης>","rate":<τιμή_ανά_ώρα_αριθμός>,"notes":"<σημειώσεις ή κενό>"}]
@@ -602,7 +610,7 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
 ΑΝ Ο ΧΡΗΣΤΗΣ ΖΗΤΑΕΙ ΑΛΛΑΓΗ ΣΕ ΥΠΑΡΧΟΝΤΑ ΣΥΝΕΡΓΑΤΗ (όνομα, ρόλος, τιμή, σημειώσεις), ΠΡΕΠΕΙ ΠΑΝΤΑ να συμπεριλάβεις ΣΤΟ ΤΕΛΟΣ μία γραμμή ΑΚΡΙΒΩΣ σε αυτή τη μορφή:
 [ACTION:{"type":"update_partner","id":<id>,"field":"<name|role|rate|notes>","value":"<τιμή>"}]
 Αν δεν ζητείται καμία αλλαγή, ΜΗΝ βάζεις καμία ACTION γραμμή.`;
-  }, [drivers, assignments, partners, dailyHours, log]);
+  }, [drivers, assignments, partners, dailyHours, log, extractEntries]);
 
   const executeAllyraTool = useCallback((name, input) => {
     const matchDriver = (nameStr) => {
@@ -774,32 +782,55 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
       else if (lo.includes("μεταφ")||lo.includes("ανάθεσ")||lo.includes("αναθεσ")) addLog(txt,"assignment",actionDriverId,customLogDate);
       else if (lo.includes("project")||lo.includes("έργο")) addLog(txt,"project",actionDriverId,customLogDate);
 
-      if (extractData && Array.isArray(extractData.entries) && extractData.entries.length>0) {
-        const enriched = extractData.entries.map(e => {
-          let driverId = e.driverId || null;
-          if (!driverId && e.driverNameRaw) {
-            const raw = e.driverNameRaw.toLowerCase();
-            const match = drivers.find(d => {
-              const tokens = d.name.toLowerCase().split(" ").filter(Boolean);
-              return d.name.toLowerCase().includes(raw) || tokens.some(tok => tok.length>2 && (raw.includes(tok) || tok.includes(raw)));
-            });
-            if (match) driverId = match.id;
+      const confirmWords = /(σωστ[άό]|σωστες|σωστό|καταχ[ωώ]ρησ|επιβεβαι|✅|👍)/i;
+      const cancelWords = /(άκυρο|ακυρο|παράλειψ|παραλειψ|διαγραψ[ετέ]|ξέχνα|ξεχνα)/i;
+      const isCancel = cancelWords.test(txt);
+      const isConfirm = !isCancel && confirmWords.test(txt);
+
+      if (extractData && Array.isArray(extractData.entries)) {
+        if (extractData.entries.length===0) {
+          setExtractEntries([]);
+        } else {
+          const enriched = extractData.entries.map(e => {
+            let driverId = e.driverId || null;
+            if (!driverId && e.driverNameRaw) {
+              const raw = e.driverNameRaw.toLowerCase();
+              const match = drivers.find(d => {
+                const tokens = d.name.toLowerCase().split(" ").filter(Boolean);
+                return d.name.toLowerCase().includes(raw) || tokens.some(tok => tok.length>2 && (raw.includes(tok) || tok.includes(raw)));
+              });
+              if (match) driverId = match.id;
+            }
+            let projectId = e.projectId || null;
+            if (!projectId && e.projectName) {
+              const pmatch = PROJECTS.find(p=>p.name.toLowerCase().includes(e.projectName.toLowerCase()) || e.projectName.toLowerCase().includes(p.name.toLowerCase()));
+              if (pmatch) projectId = pmatch.id;
+            }
+            if (!projectId && driverId) {
+              const driverAssignments = assignments.filter(a=>a.driverId===driverId);
+              if (driverAssignments.length===1) projectId = driverAssignments[0].projectId;
+            }
+            return { driverId, driverNameRaw: e.driverNameRaw||"", date: e.date||"", hours: e.hours!=null?e.hours:"", startTime: e.startTime||"", endTime: e.endTime||"", projectId };
+          });
+          if (isConfirm) {
+            commitExtractEntries(enriched);
+            setExtractEntries([]);
+          } else {
+            setExtractEntries(enriched);
           }
-          let projectId = null;
-          if (driverId) {
-            const driverAssignments = assignments.filter(a=>a.driverId===driverId);
-            if (driverAssignments.length===1) projectId = driverAssignments[0].projectId;
-          }
-          return { driverId, driverNameRaw: e.driverNameRaw||"", date: e.date||"", hours: e.hours!=null?e.hours:"", startTime: e.startTime||"", endTime: e.endTime||"", projectId };
-        });
-        setExtractEntries(enriched);
-        setExtractOpen(true);
-      } else if (imageAttachment) {
-        notify("⚠️ Δεν άνοιξε το παράθυρο καταχώρησης — δοκίμασε να στείλεις ξανά τη φωτογραφία", "warning");
+        }
+      } else if (isCancel && extractEntries.length>0) {
+        setExtractEntries([]);
+        notify("Ακυρώθηκε η εκκρεμής καταχώρηση","warning");
+      } else if (isConfirm && extractEntries.length>0) {
+        commitExtractEntries(extractEntries);
+        setExtractEntries([]);
+      } else if (imageAttachment && !(extractData && Array.isArray(extractData.entries))) {
+        notify("⚠️ Δεν εντόπισα δεδομένα προς καταχώρηση — δοκίμασε να στείλεις ξανά τη φωτογραφία", "warning");
       }
     } catch(e) { setMessages(p=>[...p,{role:"assistant",text:"Σφάλμα σύνδεσης."}]); }
     finally { setThinking(false); }
-  }, [buildPrompt, drivers, assignments, partners, executeAllyraTool]);
+  }, [buildPrompt, drivers, assignments, partners, executeAllyraTool, extractEntries, dailyHours]);
 
   const handleImageSelect = (file) => {
     if (!file) return;
@@ -846,14 +877,15 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
     setExtractEntries(prev => [...prev, { driverId, driverNameRaw, date:"", hours:"", startTime:"", endTime:"", projectId:projectId||null }]);
   };
 
-  const confirmExtractEntries = () => {
-    const valid = extractEntries.filter(e => {
+  const commitExtractEntries = (entriesToCommit) => {
+    const valid = entriesToCommit.filter(e => {
       const hasTimes = e.startTime && e.endTime;
-      const hasHours = e.hours!=="" && !isNaN(parseFloat(e.hours));
+      const hasHours = e.hours!=="" && e.hours!=null && !isNaN(parseFloat(e.hours));
       return e.driverId && e.date && (hasTimes || hasHours);
     });
     let savedCount = 0;
     let skippedCount = 0;
+    const skippedNoDriver = entriesToCommit.length - valid.length;
     const alreadySeen = [...dailyHours];
     valid.forEach(e => {
       const breakdown = (e.startTime && e.endTime) ? computeShiftBreakdown(e.date, e.startTime, e.endTime) : null;
@@ -880,10 +912,10 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
       addLog(`Καταχώρηση από φωτογραφία: ${drivers.find(d=>d.id===e.driverId)?.name||e.driverNameRaw} — ${hours} ώρες${noteExtra}`, "hours", e.driverId, e.date);
       savedCount++;
     });
-    if (skippedCount>0) notify(`Καταχωρήθηκαν ${savedCount} ✓ — παραλείφθηκαν ${skippedCount} διπλότυπα`, "warning");
-    else notify(`Καταχωρήθηκαν ${savedCount} εγγραφές ✓`, "success");
-    setExtractOpen(false);
-    setExtractEntries([]);
+    let msg = `Καταχωρήθηκαν ${savedCount} εγγραφές ✓`;
+    if (skippedCount>0) msg += ` — παραλείφθηκαν ${skippedCount} διπλότυπα`;
+    if (skippedNoDriver>0) msg += ` — ${skippedNoDriver} χωρίς αντιστοιχισμένο οδηγό δεν καταχωρήθηκαν`;
+    notify(msg, skippedCount>0||skippedNoDriver>0 ? "warning" : "success");
   };
 
   const deleteDailyHour = (entryId) => {
@@ -2042,7 +2074,7 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
                   );
                 });
               })()}
-              <button style={{width:"100%",background:"#00e5a0",border:"none",borderRadius:12,padding:"12px",fontSize:14,fontWeight:800,color:"#0a0f1e",cursor:"pointer",fontFamily:"inherit",marginTop:8}} onClick={confirmExtractEntries}>
+              <button style={{width:"100%",background:"#00e5a0",border:"none",borderRadius:12,padding:"12px",fontSize:14,fontWeight:800,color:"#0a0f1e",cursor:"pointer",fontFamily:"inherit",marginTop:8}} onClick={()=>{commitExtractEntries(extractEntries);setExtractOpen(false);setExtractEntries([]);}}>
                 ✅ Καταχώρηση όλων
               </button>
             </div>
