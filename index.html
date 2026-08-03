@@ -923,7 +923,7 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
       const breakdown = (e.startTime && e.endTime) ? computeShiftBreakdown(e.date, e.startTime, e.endTime) : null;
       const hours = breakdown ? breakdown.total : parseFloat(e.hours);
       const isDup = alreadySeen.some(h =>
-        h.driverId===e.driverId && h.date===e.date &&
+        h.driverId===e.driverId && h.date===e.date && h.projectId===(e.projectId||null) &&
         ((e.startTime && e.endTime && h.start_time===e.startTime && h.end_time===e.endTime) ||
          (!e.startTime && Math.abs((parseFloat(h.hours)||0)-hours)<0.01 && !h.start_time))
       );
@@ -964,7 +964,7 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
     if (!hasTimes && !hasHours) { notify("Βάλε ώρα εισόδου/εξόδου ή αριθμό ωρών","warning"); return; }
     const breakdown = hasTimes ? computeShiftBreakdown(manualHour.date, manualHour.startTime, manualHour.endTime) : null;
     const hours = breakdown ? breakdown.total : parseFloat(manualHour.hours);
-    const isDup = dailyHours.some(h => h.driverId===driverId && h.date===manualHour.date &&
+    const isDup = dailyHours.some(h => h.driverId===driverId && h.date===manualHour.date && h.projectId===(manualHour.projectId||null) &&
       ((hasTimes && h.start_time===manualHour.startTime && h.end_time===manualHour.endTime) ||
        (!hasTimes && Math.abs((parseFloat(h.hours)||0)-hours)<0.01 && !h.start_time)));
     if (isDup) { notify("Υπάρχει ήδη ίδια καταγραφή αυτή την ημέρα — δεν προστέθηκε ξανά","warning"); return; }
@@ -1238,7 +1238,7 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
     if (!hasTimes && !hasHours) { notify("Βάλε ώρα εισόδου/εξόδου ή αριθμό ωρών","warning"); return; }
     const breakdown = hasTimes ? computeShiftBreakdown(dateStr, startTime, endTime) : null;
     const finalHours = breakdown ? breakdown.total : parseFloat(hours);
-    const isDup = dailyHours.some(h => h.driverId===driverId && h.date===dateStr &&
+    const isDup = dailyHours.some(h => h.driverId===driverId && h.date===dateStr && h.projectId===(calendarProjectId||null) &&
       ((hasTimes && h.start_time===startTime && h.end_time===endTime) ||
        (!hasTimes && Math.abs((parseFloat(h.hours)||0)-finalHours)<0.01 && !h.start_time)));
     if (isDup) { notify("Υπάρχει ήδη ίδια καταγραφή αυτή την ημέρα","warning"); return; }
