@@ -497,6 +497,7 @@ function App() {
   });
   const [calendarAddDate, setCalendarAddDate] = useState(null);
   const [calendarAddForm, setCalendarAddForm] = useState({ driverId:null, startTime:"", endTime:"", hours:"" });
+  const [calendarEditId, setCalendarEditId] = useState(null);
   const [attachedImage, setAttachedImage] = useState(null);
   const [extractOpen, setExtractOpen] = useState(false);
   const [extractEntries, setExtractEntries] = useState([]);
@@ -1240,17 +1241,25 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
     if (!hasTimes && !hasHours) { notify("Βάλε ώρα εισόδου/εξόδου ή αριθμό ωρών","warning"); return; }
     const breakdown = hasTimes ? computeShiftBreakdown(dateStr, startTime, endTime) : null;
     const finalHours = breakdown ? breakdown.total : parseFloat(hours);
-    const isDup = dailyHours.some(h => h.driverId===driverId && h.date===dateStr && h.projectId===(calendarProjectId||null) &&
+    const isDup = dailyHours.some(h => h.id!==calendarEditId && h.driverId===driverId && h.date===dateStr && h.projectId===(calendarProjectId||null) &&
       ((hasTimes && h.start_time===startTime && h.end_time===endTime) ||
        (!hasTimes && Math.abs((parseFloat(h.hours)||0)-finalHours)<0.01 && !h.start_time)));
     if (isDup) { notify("Υπάρχει ήδη ίδια καταγραφή αυτή την ημέρα","warning"); return; }
     const note = `Χειροκίνητη καταχώρηση (ημερολόγιο)${hasTimes?` (${startTime}-${endTime})`:""}`;
-    const entry = { driverId, date:dateStr, projectId:calendarProjectId, hours:finalHours, note, start_time:startTime||null, end_time:endTime||null };
-    setDailyHours(prev => [entry, ...prev]);
-    supabase.from('daily_hours').insert({ driverid:driverId, date:dateStr, projectid:calendarProjectId, hours:finalHours, note, start_time:startTime||null, end_time:endTime||null }).then(res=>notifySupaError(res,'προσθήκη στο ημερολόγιο'));
-    addLog(`${note}: ${drivers.find(d=>d.id===driverId)?.name||""} — ${finalHours} ώρες`, "hours", driverId, dateStr);
-    notify("Καταχωρήθηκε ✓","success");
+    if (calendarEditId) {
+      setDailyHours(prev => prev.map(h => h.id===calendarEditId ? { ...h, driverId, hours:finalHours, note, start_time:startTime||null, end_time:endTime||null } : h));
+      supabase.from('daily_hours').update({ driverid:driverId, hours:finalHours, note, start_time:startTime||null, end_time:endTime||null }).eq('id', calendarEditId).then(res=>notifySupaError(res,'επεξεργασία καταγραφής'));
+      addLog(`Διόρθωση ώρας: ${drivers.find(d=>d.id===driverId)?.name||""} — ${finalHours} ώρες${hasTimes?` (${startTime}-${endTime})`:""}`, "hours", driverId, dateStr);
+      notify("Ενημερώθηκε ✓","success");
+    } else {
+      const entry = { driverId, date:dateStr, projectId:calendarProjectId, hours:finalHours, note, start_time:startTime||null, end_time:endTime||null };
+      setDailyHours(prev => [entry, ...prev]);
+      supabase.from('daily_hours').insert({ driverid:driverId, date:dateStr, projectid:calendarProjectId, hours:finalHours, note, start_time:startTime||null, end_time:endTime||null }).then(res=>notifySupaError(res,'προσθήκη στο ημερολόγιο'));
+      addLog(`${note}: ${drivers.find(d=>d.id===driverId)?.name||""} — ${finalHours} ώρες`, "hours", driverId, dateStr);
+      notify("Καταχωρήθηκε ✓","success");
+    }
     setCalendarAddDate(null);
+    setCalendarEditId(null);
     setCalendarAddForm({ driverId:null, startTime:"", endTime:"", hours:"" });
   };
 
@@ -1270,7 +1279,7 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
       const dayEntries = entries.filter(e=>e.date===dateStr).map(e => {
         const dr = drivers.find(d=>d.id===e.driverId);
         const timeStr = (e.start_time && e.end_time) ? `${e.start_time}-${e.end_time}` : `${e.hours}ω`;
-        return { id: e.id, driverName: dr?dr.name:`(id:${e.driverId})`, timeStr, hours:e.hours };
+        return { id: e.id, driverId: e.driverId, driverName: dr?dr.name:`(id:${e.driverId})`, timeStr, hours:e.hours, startTime:e.start_time||"", endTime:e.end_time||"" };
       });
       days.push({ day, dateStr, weekday: WEEKDAY_NAMES[dateObj.getDay()], entries: dayEntries });
     }
@@ -1953,11 +1962,15 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
                         {d.entries.map((e,i)=>(
                           <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:12,color:"#b0b8d0",marginBottom:2}}>
                             <span>👤 {e.driverName} · {e.timeStr}</span>
-                            <button style={{background:"none",border:"none",color:"#ff6b6b",fontSize:13,cursor:"pointer",flexShrink:0,padding:"0 4px"}} onClick={()=>deleteDailyHour(e.id)}>✕</button>
+                            <div style={{display:"flex",gap:4,flexShrink:0}}>
+                              <button style={{background:"none",border:"none",color:"#5b8cff",fontSize:13,cursor:"pointer",padding:"0 4px"}} onClick={()=>{setCalendarEditId(e.id);setCalendarAddDate(d.dateStr);setCalendarAddForm({driverId:e.driverId,startTime:e.startTime,endTime:e.endTime,hours:e.startTime?"":e.hours});}}>✏️</button>
+                              <button style={{background:"none",border:"none",color:"#ff6b6b",fontSize:13,cursor:"pointer",padding:"0 4px"}} onClick={()=>deleteDailyHour(e.id)}>✕</button>
+                            </div>
                           </div>
                         ))}
                         {calendarAddDate===d.dateStr ? (
                           <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid #1e2a4a"}}>
+                            <div style={{fontSize:11,fontWeight:700,color:calendarEditId?"#5b8cff":"#00e5a0",marginBottom:6}}>{calendarEditId?"✏️ Επεξεργασία εγγραφής":"➕ Νέα εγγραφή"}</div>
                             <select style={{width:"100%",background:"#0a0f1e",border:"1px solid #2a3560",borderRadius:8,padding:"7px 8px",color:"#e8eaf6",fontSize:12,fontFamily:"inherit",marginBottom:6}} value={calendarAddForm.driverId||""} onChange={e=>setCalendarAddForm(p=>({...p,driverId:parseInt(e.target.value,10)||null}))}>
                               <option value="">— Επίλεξε οδηγό —</option>
                               {drivers.filter(dr=>dr.status!=="terminated").map(dr=><option key={dr.id} value={dr.id}>{dr.name}</option>)}
@@ -1969,11 +1982,11 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
                             </div>
                             <div style={{display:"flex",gap:8}}>
                               <button style={{flex:1,background:"#00e5a0",border:"none",borderRadius:8,padding:"7px",fontSize:12,fontWeight:800,color:"#0a0f1e",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>saveCalendarEntry(d.dateStr)}>✅ Αποθήκευση</button>
-                              <button style={{flex:1,background:"#1a2540",border:"none",borderRadius:8,padding:"7px",fontSize:12,fontWeight:700,color:"#778",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>{setCalendarAddDate(null);setCalendarAddForm({driverId:null,startTime:"",endTime:"",hours:""});}}>Άκυρο</button>
+                              <button style={{flex:1,background:"#1a2540",border:"none",borderRadius:8,padding:"7px",fontSize:12,fontWeight:700,color:"#778",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>{setCalendarAddDate(null);setCalendarEditId(null);setCalendarAddForm({driverId:null,startTime:"",endTime:"",hours:""});}}>Άκυρο</button>
                             </div>
                           </div>
                         ) : (
-                          <button style={{background:"none",border:"none",color:"#5b8cff",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0,marginTop:4}} onClick={()=>{setCalendarAddDate(d.dateStr);setCalendarAddForm({driverId:null,startTime:"",endTime:"",hours:""});}}>
+                          <button style={{background:"none",border:"none",color:"#5b8cff",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0,marginTop:4}} onClick={()=>{setCalendarEditId(null);setCalendarAddDate(d.dateStr);setCalendarAddForm({driverId:null,startTime:"",endTime:"",hours:""});}}>
                             + Προσθήκη
                           </button>
                         )}
