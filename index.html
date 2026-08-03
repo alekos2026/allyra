@@ -1451,7 +1451,7 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
             </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>
               {[
-                {label:"Σύνολο Οδηγών",value:drivers.length,color:"#00e5a0",onClick:()=>{setTab("drivers");setDriversView("active");}},
+                {label:"Σύνολο Οδηγών",value:drivers.filter(d=>d.status!=="terminated").length,color:"#00e5a0",onClick:()=>{setTab("drivers");setDriversView("active");}},
                 {label:"Ενεργά Projects",value:activeP,color:"#5b8cff",onClick:()=>{setTab("projects");setCatFilter("all");}},
                 {label:"Σε Project",value:assignedD,color:"#f5c518",onClick:()=>{setTab("drivers");setDriversView("active");}},
                 {label:"Απόντες",value:absentD,color:"#ff6b6b",onClick:()=>{setTab("drivers");setDriversView("absent");}},
