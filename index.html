@@ -358,11 +358,12 @@ function computeShiftBreakdown(dateStr, startTime, endTime) {
   let endMin = endMinRaw;
   if (endMin <= startMin) endMin += 24*60;
   const totalMin = endMin - startMin;
-  const NIGHT_START = 22*60;
+  const NIGHT_START = 22*60; // 22:00
+  const NIGHT_END = 6*60;    // 06:00 (night wraps past midnight: 22:00-06:00)
   let regularMin = 0, nightMin = 0;
   for (let m = startMin; m < endMin; m += 1) {
     const wrapped = m % (24*60);
-    if (wrapped >= NIGHT_START) nightMin++; else regularMin++;
+    if (wrapped >= NIGHT_START || wrapped < NIGHT_END) nightMin++; else regularMin++;
   }
   const dow = new Date(dateStr+"T00:00:00Z").getUTCDay();
   const isSpecial = dow===0 || isGreekHoliday(dateStr);
@@ -482,6 +483,7 @@ function App() {
     return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}`;
   });
   const [invoiceOpen, setInvoiceOpen] = useState(false);
+  const [invoiceShowDrivers, setInvoiceShowDrivers] = useState(false);
   const [invoiceProjectId, setInvoiceProjectId] = useState(null);
   const [invoiceMonth, setInvoiceMonth] = useState(() => {
     const n = new Date();
@@ -1327,24 +1329,40 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
       const finalHours = baseline - absenceHours + delta;
       baselineTotal += finalHours;
 
-      let lineCost;
+      let lineCost, lineNormalHours;
       if (hasRecordedTimes) {
         const recordedTotal = catHours.normal+catHours.night+catHours.sunday+catHours.sundayNight;
         const remainingNormal = Math.max(0, finalHours - recordedTotal);
-        lineCost = (catHours.normal+remainingNormal)*(project.rateDay||0)
+        lineNormalHours = catHours.normal + remainingNormal;
+        lineCost = lineNormalHours*(project.rateDay||0)
           + catHours.night*(project.rateNight||project.rateDay||0)
           + catHours.sunday*(project.rateSun||project.rateDay||0)
           + catHours.sundayNight*(project.rateSunNight||project.rateSun||project.rateNight||project.rateDay||0);
       } else {
+        lineNormalHours = finalHours;
         lineCost = finalHours * (project.rateDay||0);
       }
       totalCost += lineCost;
-      driverLines.push({ driver, shiftHours, daysPerWeek, baseline, absenceHours, delta, finalHours, catHours, hasRecordedTimes, lineCost });
+      driverLines.push({ driver, shiftHours, daysPerWeek, baseline, absenceHours, delta, finalHours, catHours, hasRecordedTimes, lineCost, lineNormalHours });
     });
+
+    const categoryTotals = { normal:0, night:0, sunday:0, sundayNight:0 };
+    driverLines.forEach(dl => {
+      categoryTotals.normal += dl.lineNormalHours;
+      categoryTotals.night += dl.catHours.night;
+      categoryTotals.sunday += dl.catHours.sunday;
+      categoryTotals.sundayNight += dl.catHours.sundayNight;
+    });
+    const rateDay = project.rateDay||0, rateNight = project.rateNight||project.rateDay||0, rateSun = project.rateSun||project.rateDay||0, rateSunNight = project.rateSunNight||project.rateSun||project.rateNight||project.rateDay||0;
+    categoryTotals.normalCost = categoryTotals.normal*rateDay;
+    categoryTotals.nightCost = categoryTotals.night*rateNight;
+    categoryTotals.sundayCost = categoryTotals.sunday*rateSun;
+    categoryTotals.sundayNightCost = categoryTotals.sundayNight*rateSunNight;
+    categoryTotals.rateDay = rateDay; categoryTotals.rateNight = rateNight; categoryTotals.rateSun = rateSun; categoryTotals.rateSunNight = rateSunNight;
 
     const cost = totalCost;
 
-    return { project, daysInMonth, driverLines, totalHours:baselineTotal, cost, ambiguousNotes };
+    return { project, daysInMonth, driverLines, totalHours:baselineTotal, cost, ambiguousNotes, categoryTotals };
   };
 
   const activeD=drivers.filter(d=>d.status==="active").length;
@@ -1821,37 +1839,75 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
               {invoiceProjectId && (() => {
                 const r = computeProjectMonthlyReport(invoiceProjectId, invoiceMonth);
                 if (!r) return null;
+                const ct = r.categoryTotals;
                 return (
                   <div>
                     <div style={{background:"#0a0f1e",border:"1px solid #00e5a0",borderRadius:12,padding:16,marginBottom:14,textAlign:"center"}}>
-                      <div style={{fontSize:13,color:"#778",marginBottom:4}}>{r.totalHours.toFixed(1)} ώρες × {fmtEur(r.project.rateDay)}/ώρα</div>
+                      <div style={{fontSize:13,color:"#778",marginBottom:4}}>{r.totalHours.toFixed(1)} ώρες συνολικά</div>
                       <div style={{fontSize:32,fontWeight:900,color:"#00e5a0"}}>{fmtEur(r.cost)}</div>
                     </div>
-                    <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Ανάλυση ανά οδηγό</div>
-                    {r.driverLines.length===0 && <div style={{fontSize:12,color:"#445",marginBottom:10}}>Κανένας οδηγός ανατεθειμένος σε αυτό το project.</div>}
-                    {r.driverLines.map((dl,i)=>(
-                      <div key={i} style={{...S.card,padding:10,marginBottom:6}}>
-                        <div style={{fontSize:13,fontWeight:700,marginBottom:2}}>{dl.driver.name}</div>
-                        <div style={{fontSize:11,color:"#778"}}>{dl.shiftHours.toFixed(1)} ώρες/ημέρα × {dl.daysPerWeek} ημέρες/βδομάδα → {dl.baseline.toFixed(1)} βασικές ώρες</div>
-                        {dl.absenceHours>0 && <div style={{fontSize:11,color:"#ff6b6b"}}>− {dl.absenceHours.toFixed(1)} ώρες απουσίας</div>}
-                        {dl.delta!==0 && <div style={{fontSize:11,color:dl.delta>0?"#00e5a0":"#f5c518"}}>{dl.delta>0?"+":""}{dl.delta.toFixed(1)} ώρες απόκλισης</div>}
-                        {dl.hasRecordedTimes && (
-                          <div style={{fontSize:11,color:"#5b8cff",marginTop:2}}>
-                            {dl.catHours.night>0 && `Νύχτα: ${dl.catHours.night.toFixed(1)}  `}
-                            {dl.catHours.sunday>0 && `Κυρ/Αργ: ${dl.catHours.sunday.toFixed(1)}  `}
-                            {dl.catHours.sundayNight>0 && `Κυρ+Νύχτα: ${dl.catHours.sundayNight.toFixed(1)}`}
-                          </div>
-                        )}
-                        <div style={{fontSize:12,fontWeight:700,color:"#e8eaf6",marginTop:4}}>Σύνολο: {dl.finalHours.toFixed(1)} ώρες{dl.lineCost!=null?` · ${fmtEur(dl.lineCost)}`:""}</div>
+
+                    <div style={{fontSize:11,fontWeight:700,color:"#445",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Ανάλυση ανά κατηγορία ώρας</div>
+                    {ct.normal>0 && (
+                      <div style={{...S.card,padding:12,marginBottom:6,display:"flex",justifyContent:"space-between"}}>
+                        <span style={{fontSize:13,color:"#b0b8d0"}}>Κανονικές ώρες: {ct.normal.toFixed(1)}ω × {fmtEur(ct.rateDay)}</span>
+                        <span style={{fontSize:13,fontWeight:700,color:"#e8eaf6"}}>{fmtEur(ct.normalCost)}</span>
                       </div>
-                    ))}
+                    )}
+                    {ct.night>0 && (
+                      <div style={{...S.card,padding:12,marginBottom:6,display:"flex",justifyContent:"space-between"}}>
+                        <span style={{fontSize:13,color:"#b0b8d0"}}>Νυχτερινές ώρες: {ct.night.toFixed(1)}ω × {fmtEur(ct.rateNight)}</span>
+                        <span style={{fontSize:13,fontWeight:700,color:"#e8eaf6"}}>{fmtEur(ct.nightCost)}</span>
+                      </div>
+                    )}
+                    {ct.sunday>0 && (
+                      <div style={{...S.card,padding:12,marginBottom:6,display:"flex",justifyContent:"space-between"}}>
+                        <span style={{fontSize:13,color:"#b0b8d0"}}>Κυριακή/Αργία ώρες: {ct.sunday.toFixed(1)}ω × {fmtEur(ct.rateSun)}</span>
+                        <span style={{fontSize:13,fontWeight:700,color:"#e8eaf6"}}>{fmtEur(ct.sundayCost)}</span>
+                      </div>
+                    )}
+                    {ct.sundayNight>0 && (
+                      <div style={{...S.card,padding:12,marginBottom:6,display:"flex",justifyContent:"space-between"}}>
+                        <span style={{fontSize:13,color:"#b0b8d0"}}>Κυριακή/Αργία + Νύχτα: {ct.sundayNight.toFixed(1)}ω × {fmtEur(ct.rateSunNight)}</span>
+                        <span style={{fontSize:13,fontWeight:700,color:"#e8eaf6"}}>{fmtEur(ct.sundayNightCost)}</span>
+                      </div>
+                    )}
+                    <div style={{...S.card,padding:12,marginBottom:14,display:"flex",justifyContent:"space-between",background:"#0a0f1e",border:"1px solid #00e5a0"}}>
+                      <span style={{fontSize:14,fontWeight:800,color:"#00e5a0"}}>ΣΥΝΟΛΟ</span>
+                      <span style={{fontSize:14,fontWeight:800,color:"#00e5a0"}}>{fmtEur(r.cost)}</span>
+                    </div>
+
+                    <button style={{background:"none",border:"none",color:"#5b8cff",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0,marginBottom:10}} onClick={()=>setInvoiceShowDrivers(!invoiceShowDrivers)}>
+                      {invoiceShowDrivers ? "▲ Απόκρυψη ανάλυσης ανά οδηγό" : "▼ Ανάλυση ανά οδηγό (για έλεγχο)"}
+                    </button>
+                    {invoiceShowDrivers && (
+                      <>
+                        {r.driverLines.length===0 && <div style={{fontSize:12,color:"#445",marginBottom:10}}>Κανένας οδηγός ανατεθειμένος σε αυτό το project.</div>}
+                        {r.driverLines.map((dl,i)=>(
+                          <div key={i} style={{...S.card,padding:10,marginBottom:6}}>
+                            <div style={{fontSize:13,fontWeight:700,marginBottom:2}}>{dl.driver.name}</div>
+                            <div style={{fontSize:11,color:"#778"}}>{dl.shiftHours.toFixed(1)} ώρες/ημέρα × {dl.daysPerWeek} ημέρες/βδομάδα → {dl.baseline.toFixed(1)} βασικές ώρες</div>
+                            {dl.absenceHours>0 && <div style={{fontSize:11,color:"#ff6b6b"}}>− {dl.absenceHours.toFixed(1)} ώρες απουσίας</div>}
+                            {dl.delta!==0 && <div style={{fontSize:11,color:dl.delta>0?"#00e5a0":"#f5c518"}}>{dl.delta>0?"+":""}{dl.delta.toFixed(1)} ώρες απόκλισης</div>}
+                            {dl.hasRecordedTimes && (
+                              <div style={{fontSize:11,color:"#5b8cff",marginTop:2}}>
+                                {dl.catHours.night>0 && `Νύχτα: ${dl.catHours.night.toFixed(1)}  `}
+                                {dl.catHours.sunday>0 && `Κυρ/Αργ: ${dl.catHours.sunday.toFixed(1)}  `}
+                                {dl.catHours.sundayNight>0 && `Κυρ+Νύχτα: ${dl.catHours.sundayNight.toFixed(1)}`}
+                              </div>
+                            )}
+                            <div style={{fontSize:12,fontWeight:700,color:"#e8eaf6",marginTop:4}}>Σύνολο: {dl.finalHours.toFixed(1)} ώρες{dl.lineCost!=null?` · ${fmtEur(dl.lineCost)}`:""}</div>
+                          </div>
+                        ))}
+                      </>
+                    )}
                     {r.ambiguousNotes.length>0 && (
                       <div style={{background:"#f5c51811",border:"1px solid #f5c518",borderRadius:10,padding:10,marginTop:10}}>
                         {r.ambiguousNotes.map((n,i)=><div key={i} style={{fontSize:11,color:"#f5c518",marginBottom:4}}>⚠️ {n}</div>)}
                       </div>
                     )}
                     <div style={{fontSize:10,color:"#556",marginTop:10,lineHeight:1.5}}>
-                      ⚠️ Εκτιμώμενος υπολογισμός βάσει προγραμματισμένου ωραρίου + καταγεγραμμένων εξαιρέσεων. Δεν διαχωρίζει αυτόματα νυχτερινές/Κυριακή ώρες — να επαληθεύεται πριν την τιμολόγηση.
+                      ⚠️ Εκτιμώμενος υπολογισμός βάσει προγραμματισμένου ωραρίου + καταγεγραμμένων εξαιρέσεων. Ο διαχωρισμός νύχτας γίνεται στις 22:00. Να επαληθεύεται πριν την τιμολόγηση.
                     </div>
                   </div>
                 );
