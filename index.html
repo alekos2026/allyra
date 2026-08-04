@@ -34,7 +34,7 @@ const CATEGORIES = {
   trapeza:     { label:"Τράπεζα",      color:"#a78bfa", emoji:"🏦" },
 };
 
-const PROJECTS = [
+const PROJECTS_BASE = [
   { id:1,  name:"ELTREKKA Ταύρος",        cat:"antalaktika", client:"ELTREKKA",     address:"Πειραιώς 180, Ταύρος",                     rateDay:12.50, rateNight:null,  rateSun:null,  status:"active" },
   { id:2,  name:"ELTREKKA Ηλιούπολη",     cat:"antalaktika", client:"ELTREKKA",     address:"Βουλιαγμένης 429, Ηλιούπολη",              rateDay:12.50, rateNight:null,  rateSun:null,  status:"active" },
   { id:3,  name:"ELTREKKA Αιγάλεω",       cat:"antalaktika", client:"ELTREKKA",     address:"Λ.Αθηνών 369, Αιγάλεω",                   rateDay:12.50, rateNight:null,  rateSun:null,  status:"active" },
@@ -423,6 +423,18 @@ function App() {
     fetchPartners();
   }, []);
 
+  const [customProjects, setCustomProjects] = useState([]);
+  useEffect(() => {
+    async function fetchCustomProjects() {
+      const { data, error } = await supabase.from('projects')
+        .select('id, name, cat, client, address, rateDay:rateday, rateNight:ratenight, rateSun:ratesun, rateSunNight:ratesunnight, status')
+        .order('id');
+      if (!error && data && data.length > 0) setCustomProjects(data);
+    }
+    fetchCustomProjects();
+  }, []);
+  const PROJECTS = [...PROJECTS_BASE, ...customProjects];
+
   const [log, setLog] = useState([
     { id:1, ts:"2026-07-01 09:00", type:"system", text:"ALLYRA v4 — 60 οδηγοί, 27 projects, 14 συνεργάτες.", driverId:null },
     { id:2, ts:"2026-06-30 17:00", type:"project", text:"Goodys Π.Φάληρο — Διακοπή project.", driverId:null },
@@ -637,6 +649,9 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
 ΑΝ Ο ΧΡΗΣΤΗΣ ΖΗΤΑΕΙ ΠΡΟΣΘΗΚΗ ΝΕΟΥ ΣΥΝΕΡΓΑΤΗ/ΕΡΓΟΛΑΒΟΥ/ΟΔΗΓΟΥ ΣΥΝΕΡΓΑΤΗ (π.χ. "πρόσθεσε νέο συνεργάτη Χ", "ήρθε νέος οδηγός του Μητούδη ονόματι Χ"), ΠΡΕΠΕΙ ΠΑΝΤΑ να συμπεριλάβεις ΣΤΟ ΤΕΛΟΣ μία γραμμή ΑΚΡΙΒΩΣ σε αυτή τη μορφή:
 [ACTION:{"type":"add_partner","name":"<όνομα>","role":"<ρόλος, π.χ. Οδηγός Μητούδη ή Εξωτερικός Συνεργάτης>","rate":<τιμή_ανά_ώρα_αριθμός>,"notes":"<σημειώσεις ή κενό>"}]
 Αν δεν δοθεί τιμή/ρόλος, χρησιμοποίησε λογική προεπιλογή βάσει παρόμοιων υπαρχόντων συνεργατών.
+ΑΝ Ο ΧΡΗΣΤΗΣ ΘΕΛΕΙ ΝΑ ΠΡΟΣΘΕΣΕΙΣ ΕΝΤΕΛΩΣ ΝΕΟ PROJECT/ΚΑΤΑΣΤΗΜΑ/ΠΕΛΑΤΗ (δεν υπάρχει ήδη στη λίστα PROJECTS παραπάνω), ΠΡΕΠΕΙ ΠΑΝΤΑ να συμπεριλάβεις ΣΤΟ ΤΕΛΟΣ μία γραμμή ΑΚΡΙΒΩΣ σε αυτή τη μορφή — ΠΟΤΕ μην πεις "Καταχωρείται/Προσθέτω το project" χωρίς αυτή τη γραμμή, γιατί χωρίς αυτήν ΔΕΝ αποθηκεύεται πουθενά:
+[ACTION:{"type":"add_project","name":"<όνομα project>","cat":"<ανταλλακτικά|εστίαση|κάβα|σούπερ μάρκετ>","client":"<πελάτης ή ίδιο με name>","address":"<διεύθυνση ή κενό>","rateDay":<τιμή_ανά_ώρα ή 12.5>,"rateNight":<τιμή_νύχτας ή null>,"rateSun":<τιμή_Κυριακής ή null>,"rateSunNight":<τιμή_Κυριακής+νύχτας ή null>}]
+Αν ο χρήστης δεν δώσει τιμή/ώρα, χρησιμοποίησε €12.5 προεπιλογή. Αν δεν δώσει κατηγορία, χρησιμοποίησε "ανταλλακτικά" ως προεπιλογή.
 ΑΝ Ο ΧΡΗΣΤΗΣ ΖΗΤΑΕΙ ΑΛΛΑΓΗ ΣΕ ΥΠΑΡΧΟΝΤΑ ΣΥΝΕΡΓΑΤΗ (όνομα, ρόλος, τιμή, σημειώσεις), ΠΡΕΠΕΙ ΠΑΝΤΑ να συμπεριλάβεις ΣΤΟ ΤΕΛΟΣ μία γραμμή ΑΚΡΙΒΩΣ σε αυτή τη μορφή:
 [ACTION:{"type":"update_partner","id":<id>,"field":"<name|role|rate|notes>","value":"<τιμή>"}]
 Αν δεν ζητείται καμία αλλαγή, ΜΗΝ βάζεις καμία ACTION γραμμή.`;
@@ -808,6 +823,29 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
             });
             notify(`Νέος συνεργάτης: ${newPartner.name} ✓`, "success");
             addLog(`Προσθήκη νέου συνεργάτη: ${newPartner.name} (${newPartner.role})`, "partner", null, customLogDate);
+          }
+          if (action.type === "add_project") {
+            const catMap = {"ανταλλακτικά":"antalaktika","εστίαση":"estiation","κάβα":"kava","σούπερ μάρκετ":"supermarket"};
+            const catKey = catMap[(action.cat||"").toLowerCase()] || "antalaktika";
+            const newProject = {
+              name: action.name || "Νέο Project",
+              cat: catKey,
+              client: action.client || action.name || "—",
+              address: action.address || "",
+              rateDay: parseFloat(action.rateDay) || 12.50,
+              rateNight: action.rateNight!=null ? parseFloat(action.rateNight) : null,
+              rateSun: action.rateSun!=null ? parseFloat(action.rateSun) : null,
+              rateSunNight: action.rateSunNight!=null ? parseFloat(action.rateSunNight) : null,
+              status: "active"
+            };
+            supabase.from('projects').insert({ name:newProject.name, cat:newProject.cat, client:newProject.client, address:newProject.address, rateday:newProject.rateDay, ratenight:newProject.rateNight, ratesun:newProject.rateSun, ratesunnight:newProject.rateSunNight, status:newProject.status })
+              .select('id, name, cat, client, address, rateDay:rateday, rateNight:ratenight, rateSun:ratesun, rateSunNight:ratesunnight, status')
+              .then(({data,error}) => {
+                if (data && data[0]) setCustomProjects(prev => [...prev, data[0]]);
+                if (error) notify(`⚠️ Αποτυχία προσθήκης project: ${error.message}`, "warning");
+              });
+            notify(`Νέο project: ${newProject.name} ✓`, "success");
+            addLog(`Προσθήκη νέου project: ${newProject.name}`, "project", null, customLogDate);
           }
           if (action.type === "update_partner") {
             let coercedValue = action.value;
@@ -1117,22 +1155,40 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
   };
 
   const parseRangeDays = (text, refYear, refMonth) => {
-    const m = (text||"").match(/(\d{1,2})\s*-\s*(\d{1,2})\/(\d{1,2})/);
-    if (m) {
-      const d1=parseInt(m[1],10), d2=parseInt(m[2],10), mo=parseInt(m[3],10);
-      if (d2>=d1) {
-        if (refYear) {
-          let weekdays = 0;
-          for (let day=d1; day<=d2; day++) {
-            const dow = new Date(refYear, mo-1, day).getDay();
-            if (dow>=1 && dow<=5) weekdays++;
-          }
-          return weekdays;
-        }
-        return d2-d1+1;
-      }
+    let d1, mo1, d2, mo2;
+    const crossMatch = (text||"").match(/(\d{1,2})\/(\d{1,2})\s*-\s*(\d{1,2})\/(\d{1,2})/);
+    const sameMatch = !crossMatch && (text||"").match(/(\d{1,2})\s*-\s*(\d{1,2})\/(\d{1,2})/);
+    if (crossMatch) {
+      d1=parseInt(crossMatch[1],10); mo1=parseInt(crossMatch[2],10);
+      d2=parseInt(crossMatch[3],10); mo2=parseInt(crossMatch[4],10);
+    } else if (sameMatch) {
+      d1=parseInt(sameMatch[1],10); mo1=parseInt(sameMatch[3],10);
+      d2=parseInt(sameMatch[2],10); mo2=mo1;
+    } else {
+      return 1;
     }
-    return 1;
+    if (!refYear) {
+      if (mo1===mo2) return d2>=d1 ? d2-d1+1 : 1;
+      const start = new Date(2000, mo1-1, d1);
+      let end = new Date(2000, mo2-1, d2);
+      if (end<start) end = new Date(2001, mo2-1, d2);
+      return Math.round((end-start)/86400000)+1;
+    }
+    let year2 = refYear;
+    if (mo2 < mo1) year2 = refYear+1;
+    const start = new Date(refYear, mo1-1, d1);
+    const end = new Date(year2, mo2-1, d2);
+    const monthStart = new Date(refYear, refMonth-1, 1);
+    const monthEnd = new Date(refYear, refMonth, 0);
+    const clipStart = start < monthStart ? monthStart : start;
+    const clipEnd = end > monthEnd ? monthEnd : end;
+    if (clipStart > clipEnd) return 0;
+    let weekdays = 0;
+    for (let d = new Date(clipStart); d <= clipEnd; d.setDate(d.getDate()+1)) {
+      const dow = d.getDay();
+      if (dow>=1 && dow<=5) weekdays++;
+    }
+    return weekdays;
   };
 
   const mondayOfWeek = (dateObj) => {
