@@ -407,7 +407,7 @@ function App() {
   useEffect(() => {
     async function fetchAssignments() {
       const { data, error } = await supabase.from('assignments')
-        .select('id, driverId:driverid, projectId:projectid, shift, days')
+        .select('id, driverId:driverid, projectId:projectid, partnerId:partnerid, shift, days')
         .order('id');
       if (!error && data && data.length > 0) setAssignments(data);
     }
@@ -574,7 +574,11 @@ function App() {
     }).join("\n");
 
     const pl = PROJECTS.filter(p=>p.status==="active").map(p=>{
-      const pD = assignments.filter(a=>a.projectId===p.id).map(a=>{ const dr=drivers.find(d=>d.id===a.driverId); return dr?dr.name.split(" ")[0]:"";}).filter(Boolean).join(",");
+      const pD = assignments.filter(a=>a.projectId===p.id).map(a=>{
+        if (a.driverId) { const dr=drivers.find(d=>d.id===a.driverId); return dr?dr.name.split(" ")[0]:""; }
+        if (a.partnerId) { const pt=partners.find(x=>x.id===a.partnerId); return pt?pt.name.split(" ")[0]+"(συν.)":""; }
+        return "";
+      }).filter(Boolean).join(",");
       let rateStr = `€${p.rateDay}/ώρα`;
       if (p.rateNight) rateStr += `|νύχτα€${p.rateNight}`;
       if (p.rateSun) rateStr += `|Κυρ€${p.rateSun}`;
@@ -608,12 +612,13 @@ function App() {
 ΚΑΝΟΝΑΣ ΑΞΙΟΠΙΣΤΙΑΣ (ΠΟΛΥ ΣΗΜΑΝΤΙΚΟ): Ο χρήστης εμπιστεύεται ό,τι του λες ως γεγονός. ΠΟΤΕ μην περιγράφεις μια αλλαγή (μεταφορά οδηγού, νέο ωράριο, νέος οδηγός, άδεια, ώρες) σαν να έχει ήδη καταχωρηθεί, εκτός αν έχεις ΠΡΑΓΜΑΤΙΚΑ συμπεριλάβει το αντίστοιχο ACTION/EXTRACT/LOGDATE tag στην ΙΔΙΑ απάντηση. Αν κάτι δεν μπορεί να καταχωρηθεί ακόμα (π.χ. λείπει πληροφορία), πες ξεκάθαρα τι λείπει αντί να προσποιηθείς ότι ολοκληρώθηκε. Κάθε φορά που ο χρήστης σου δίνει μια αλλαγή σε φυσική γλώσσα, ο στόχος σου είναι να βγει ΠΑΝΤΑ το κατάλληλο ACTION tag ώστε να αποθηκευτεί πραγματικά — μην αρκείσαι στο να το περιγράψεις μόνο σε κείμενο.
 ΚΑΝΟΝΑΣ ΠΡΟΤΕΡΑΙΟΤΗΤΑΣ ΔΕΔΟΜΕΝΩΝ (ΠΟΛΥ ΣΗΜΑΝΤΙΚΟ): Η λίστα ΑΝΑΘΕΣΕΩΝ (assignments) στα ΟΔΗΓΟΙ παραπάνω δείχνει μόνο το ΤΥΠΙΚΟ/ΠΡΟΕΠΙΛΕΓΜΕΝΟ πρόγραμμα κάθε οδηγού — ΔΕΝ είναι αμετάβλητη αλήθεια για κάθε συγκεκριμένη μέρα. Όποτε ο χρήστης σου δίνει ΝΕΑ, ΣΥΓΚΕΚΡΙΜΕΝΗ πληροφορία για μια μέρα/βάρδια/project (μέσω φωτογραφίας ή κειμένου — π.χ. διαφορετικό project, διαφορετικό ωράριο, διαφορετικό όνομα από το συνηθισμένο), αυτή η ΝΕΑ πληροφορία υπερισχύει ΠΑΝΤΑ του τυπικού προγράμματος. ΜΗΝ "διορθώνεις", ΜΗΝ αμφισβητείς, και ΜΗΝ επιστρέφεις στο τυπικό πρόγραμμα βασιζόμενος σε αυτό που θα περίμενες — καταχώρησε ό,τι δείχνει η νέα πληροφορία, ό,τι κι αν λέει η τυπική ανάθεση. Η τυπική ανάθεση είναι απλά ένα σημείο αναφοράς/υπόθεση για μέρες χωρίς νεότερα δεδομένα, όχι κανόνας που υπερισχύει.
 ΣΗΜΕΡΑ είναι: ${todayStr} (${today.toLocaleDateString("el-GR")}). ΑΥΡΙΟ είναι: ${tomorrowStr}. ΜΕΘΑΥΡΙΟ είναι: ${dayAfterStr}. ΧΘΕΣ ήταν: ${yesterdayStr}. ΠΡΟΧΘΕΣ ήταν: ${dayBeforeStr}.
-ΟΔΗΓΟΙ(${drivers.length}):
+ΟΔΗΓΟΙ (μισθωτοί — ξεχωριστή αρίθμηση από τους ΣΥΝΕΡΓΑΤΕΣ παρακάτω)(${drivers.length}):
 ${dl}
 PROJECTS(ενεργά):
 ${pl}
-ΣΥΝΕΡΓΑΤΕΣ/ΕΡΓΟΛΑΒΟΙ(${partners.length}):
+ΣΥΝΕΡΓΑΤΕΣ/ΕΡΓΟΛΑΒΟΙ (εξωτερικοί, ΟΧΙ μισθωτοί — ξεχωριστή αρίθμηση από τους ΟΔΗΓΟΥΣ παραπάνω, τα ids τους ΔΕΝ αντιστοιχούν σε οδηγούς)(${partners.length}):
 ${prl}
+ΚΡΙΣΙΜΟ ΓΙΑ ΑΝΑΘΕΣΕΙΣ: Οι λίστες ΟΔΗΓΟΙ και ΣΥΝΕΡΓΑΤΕΣ έχουν ΕΝΤΕΛΩΣ ΞΕΧΩΡΙΣΤΗ αρίθμηση (π.χ. μπορεί να υπάρχει οδηγός με id:5 ΚΑΙ συνεργάτης με id:5 — είναι διαφορετικοί άνθρωποι). Όταν ο χρήστης ζητάει ανάθεση κάποιου σε project ΜΕ ΤΟ ΟΝΟΜΑ, πρώτα έλεγξε ΚΑΙ τις δύο λίστες για να βρεις σε ποια ανήκει το όνομα, και μετά χρησιμοποίησε το ΣΩΣΤΟ action type (assign_driver για οδηγό, assign_partner για συνεργάτη) με το id ΑΠΟ ΤΗ ΣΩΣΤΗ ΛΙΣΤΑ. Αν το όνομα υπάρχει και στις δύο λίστες, ρώτησε τον χρήστη να διευκρινίσει ποιον εννοεί.
 ΚΑΤΑΓΕΓΡΑΜΜΕΝΕΣ ΩΡΕΣ ΕΡΓΑΣΙΑΣ (πρόσφατες, μορφή: όνομα|ημερομηνία|ώρες ή ωράριο|project):
 ${recentHours||"— καμία καταγραφή —"}
 ΠΡΟΣΦΑΤΕΣ ΑΠΟΥΣΙΕΣ/ΑΔΕΙΕΣ (μορφή: τύπος|όνομα|ημερομηνία|περιγραφή):
@@ -636,8 +641,12 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
 ΑΝ Ο ΧΡΗΣΤΗΣ ΘΕΛΕΙ ΝΑ ΠΡΟΣΘΕΣΕΙΣ ΕΝΤΕΛΩΣ ΝΕΟ ΟΔΗΓΟ (δεν υπάρχει ήδη στη λίστα ΟΔΗΓΟΙ), ΠΡΕΠΕΙ να συμπεριλάβεις μία γραμμή ΑΚΡΙΒΩΣ σε αυτή τη μορφή:
 [ACTION:{"type":"add_driver","name":"<πλήρες όνομα>","phone":"<τηλέφωνο ή κενό>","moto":"<πινακίδα ή ΔΙΚΟ ΤΟΥ ή κενό>","motoType":"company|own","area":"<περιοχή ή κενό>","contract_hours_week":<αριθμός ή 40>,"work_days":<5 ή 6>}]
 ΚΡΙΣΙΜΟ: Αν ο χρήστης ΤΑΥΤΟΧΡΟΝΑ θέλει και να τον αναθέσεις σε project στο ΙΔΙΟ μήνυμα, ΜΗΝ βάλεις ΚΑΙ assign_driver action στην ίδια απάντηση (δεν θα ξέρεις ακόμα το σωστό id του). Αντ' αυτού, πρόσθεσε ΜΟΝΟ το add_driver, και πες στον χρήστη καθαρά: "Πρόσθεσα τον [όνομα] — γράψε μου τώρα σε ποιο project να τον βάλω για να ολοκληρωθεί η ανάθεση." Στο επόμενο μήνυμα θα ξέρεις ήδη το σωστό id του από τη λίστα ΟΔΗΓΟΙ και θα κάνεις κανονικά το assign_driver.
-ΑΝ Ο ΧΡΗΣΤΗΣ ΖΗΤΑΕΙ ΜΕΤΑΦΟΡΑ/ΑΝΑΘΕΣΗ ΟΔΗΓΟΥ ΣΕ ΝΕΟ PROJECT, ΠΡΕΠΕΙ ΠΑΝΤΑ να συμπεριλάβεις ΣΤΟ ΤΕΛΟΣ μία γραμμή ΑΚΡΙΒΩΣ σε αυτή τη μορφή:
-[ACTION:{"type":"assign_driver","driverId":<id_οδηγού>,"projectId":<id_project>,"shift":"<ωράριο ή κενό>","days":"<ημέρες ή κενό>","removeProjectId":<id_παλιού_project_ή_null>}]
+ΑΝ Ο ΧΡΗΣΤΗΣ ΖΗΤΑΕΙ ΜΕΤΑΦΟΡΑ/ΑΝΑΘΕΣΗ ΟΔΗΓΟΥ (ΑΠΟ ΤΗ ΛΙΣΤΑ ΟΔΗΓΟΙ) ΣΕ ΝΕΟ PROJECT, ΠΡΕΠΕΙ ΠΑΝΤΑ να συμπεριλάβεις ΣΤΟ ΤΕΛΟΣ μία γραμμή ΑΚΡΙΒΩΣ σε αυτή τη μορφή:
+[ACTION:{"type":"assign_driver","driverId":<id_οδηγού_από_τη_λίστα_ΟΔΗΓΟΙ>,"projectId":<id_project>,"shift":"<ωράριο ή κενό>","days":"<ημέρες ή κενό>","removeProjectId":<id_παλιού_project_ή_null>}]
+ΑΝ Ο ΧΡΗΣΤΗΣ ΖΗΤΑΕΙ ΜΕΤΑΦΟΡΑ/ΑΝΑΘΕΣΗ ΣΥΝΕΡΓΑΤΗ/ΕΡΓΟΛΑΒΟΥ (ΑΠΟ ΤΗ ΛΙΣΤΑ ΣΥΝΕΡΓΑΤΕΣ) ΣΕ PROJECT, χρησιμοποίησε ΑΥΤΗ τη διαφορετική μορφή (ΟΧΙ assign_driver — ο συνεργάτης ΔΕΝ είναι στη λίστα ΟΔΗΓΟΙ):
+[ACTION:{"type":"assign_partner","partnerId":<id_συνεργάτη_από_τη_λίστα_ΣΥΝΕΡΓΑΤΕΣ>,"projectId":<id_project>,"shift":"<ωράριο ή κενό>","days":"<ημέρες ή κενό>","removeProjectId":<id_παλιού_project_ή_null>}]
+Παράδειγμα: "ανάθεσε τον Πετράκη στο Χ project, 11:30-15:30" — αν ο Πετράκης βρίσκεται στη λίστα ΣΥΝΕΡΓΑΤΕΣ με π.χ. id:5, χρησιμοποίησε [ACTION:{"type":"assign_partner","partnerId":5,"projectId":<id_Χ>,"shift":"11:30-15:30","days":""}] — ΠΟΤΕ assign_driver με αυτό το id, γιατί ανήκει σε άλλη λίστα/αρίθμηση.
+ΑΝ ΤΟ ΟΝΟΜΑ ΔΕΝ ΒΡΙΣΚΕΤΑΙ ΣΕ ΚΑΜΙΑ ΑΠΟ ΤΙΣ ΔΥΟ ΛΙΣΤΕΣ (ΟΔΗΓΟΙ ή ΣΥΝΕΡΓΑΤΕΣ), ΜΗΝ κάνεις καμία ανάθεση — ρώτησε τον χρήστη αν πρόκειται για νέο μισθωτό οδηγό ή νέο συνεργάτη/εργολάβο, ώστε να τον προσθέσεις πρώτα στη σωστή λίστα (add_driver ή add_partner) πριν κάνεις ανάθεση.
 ΑΝ Ο ΧΡΗΣΤΗΣ ΠΕΡΙΓΡΑΦΕΙ ΤΙΣ ΠΡΑΓΜΑΤΙΚΕΣ ΩΡΕΣ ΠΟΥ ΔΟΥΛΕΨΕ ένας οδηγός μια συγκεκριμένη μέρα (π.χ. "δούλεψε 09:00-12:00 αντί για το κανονικό του ωράριο", "έφυγε νωρίτερα", "έκανε υπερωρία μέχρι τις 20:00", "δούλεψε μόνο 3 ώρες"), υπολόγισε τις ΠΡΑΓΜΑΤΙΚΕΣ ώρες εργασίας εκείνης της μέρας (όχι το προγραμματισμένο ωράριο) και πρόσθεσε ΣΤΟ ΤΕΛΟΣ μία γραμμή ΑΚΡΙΒΩΣ σε αυτή τη μορφή:
 [ACTION:{"type":"log_hours","driverId":<id>,"hours":<αριθμός_ωρών>,"projectId":<id_project_ή_null>,"note":"<σύντομη περιγραφή, π.χ. 09:00-12:00 αντί για 09:00-17:00>"}]
 Αν ο χρήστης αναφέρει προηγούμενη ημερομηνία γι' αυτή την καταγραφή, βάλε ΚΑΙ τη γραμμή [LOGDATE:YYYY-MM-DD] όπως παραπάνω.
@@ -799,11 +808,21 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
               setAssignments(prev => prev.filter(a => !(a.driverId===action.driverId && a.projectId===action.removeProjectId)));
               supabase.from('assignments').delete().eq('driverid', action.driverId).eq('projectid', action.removeProjectId).then(res=>notifySupaError(res,'αφαίρεση ανάθεσης'));
             }
-            const newAsg = { driverId:action.driverId, projectId:action.projectId, shift:action.shift||"", days:action.days||"" };
+            const newAsg = { driverId:action.driverId, partnerId:null, projectId:action.projectId, shift:action.shift||"", days:action.days||"" };
             setAssignments(prev => [...prev, newAsg]);
-            supabase.from('assignments').insert({ driverid:action.driverId, projectid:action.projectId, shift:action.shift||"", days:action.days||"" }).then(res=>notifySupaError(res,'ανάθεση'));
+            supabase.from('assignments').insert({ driverid:action.driverId, partnerid:null, projectid:action.projectId, shift:action.shift||"", days:action.days||"" }).then(res=>notifySupaError(res,'ανάθεση'));
             actionDriverId = action.driverId;
             notify("Ανάθεση οδηγού καταχωρήθηκε ✓","success");
+          }
+          if (action.type === "assign_partner") {
+            if (action.removeProjectId) {
+              setAssignments(prev => prev.filter(a => !(a.partnerId===action.partnerId && a.projectId===action.removeProjectId)));
+              supabase.from('assignments').delete().eq('partnerid', action.partnerId).eq('projectid', action.removeProjectId).then(res=>notifySupaError(res,'αφαίρεση ανάθεσης συνεργάτη'));
+            }
+            const newAsg = { driverId:null, partnerId:action.partnerId, projectId:action.projectId, shift:action.shift||"", days:action.days||"" };
+            setAssignments(prev => [...prev, newAsg]);
+            supabase.from('assignments').insert({ driverid:null, partnerid:action.partnerId, projectid:action.projectId, shift:action.shift||"", days:action.days||"" }).then(res=>notifySupaError(res,'ανάθεση συνεργάτη'));
+            notify("Ανάθεση συνεργάτη καταχωρήθηκε ✓","success");
           }
           if (action.type === "log_hours") {
             const detectedHours = detectHoursFromText(txt);
@@ -1683,7 +1702,11 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
             </div>
             {filtP.map(p=>{
               const cat=CATEGORIES[p.cat];
-              const pD=assignments.filter(a=>a.projectId===p.id).map(a=>{ const dr=drivers.find(d=>d.id===a.driverId); return dr?{name:dr.name,shift:a.shift,days:a.days}:null;}).filter(Boolean);
+              const pD=assignments.filter(a=>a.projectId===p.id).map(a=>{
+                if (a.driverId) { const dr=drivers.find(d=>d.id===a.driverId); return dr?{name:dr.name,shift:a.shift,days:a.days,isPartner:false}:null; }
+                if (a.partnerId) { const pt=partners.find(x=>x.id===a.partnerId); return pt?{name:pt.name,shift:a.shift,days:a.days,isPartner:true}:null; }
+                return null;
+              }).filter(Boolean);
               return (
                 <div key={p.id} style={{...S.card,opacity:p.status==="stopped"?0.5:1}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
@@ -1704,7 +1727,7 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
                     {p.rateSun && <span style={{fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20,background:"#f5c51822",color:"#f5c518",border:"1px solid #f5c518"}}>Κυρ {fmtEur(p.rateSun)}</span>}
                     {p.rateSunNight && <span style={{fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20,background:"#ff6b6b22",color:"#ff6b6b",border:"1px solid #ff6b6b"}}>Κυρ+Νύχτα {fmtEur(p.rateSunNight)}</span>}
                   </div>
-                  {pD.map((d,i)=><div key={i} style={S.cardSub}>👤 {d.name} · {d.shift} · {d.days}</div>)}
+                  {pD.map((d,i)=><div key={i} style={S.cardSub}>{d.isPartner ? "🤝" : "👤"} {d.name}{d.isPartner ? " (συνεργάτης)" : ""} · {d.shift} · {d.days}</div>)}
                   <div style={{display:"flex",gap:14,marginTop:8}}>
                     <button style={{background:"none",border:"none",color:"#f5c518",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0}} onClick={()=>{setInvoiceProjectId(p.id);setInvoiceOpen(true);}}>
                       🧾 Μηνιαία Τιμολόγηση
@@ -1726,7 +1749,9 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
               <button style={{background:"#00e5a0",border:"none",borderRadius:20,padding:"6px 12px",fontSize:12,fontWeight:800,color:"#0a0f1e",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setNewPartnerOpen(true)}>+ Νέος Συνεργάτης</button>
             </div>
             <div style={{fontSize:11,fontWeight:700,letterSpacing:2,color:"#445",textTransform:"uppercase",marginBottom:8}}>Ομάδα Μητούδη</div>
-            {partners.filter(p=>p.role.includes("Μητούδη")||p.name==="Μητούδης Δημήτρης").map(p=>(
+            {partners.filter(p=>p.role.includes("Μητούδη")||p.name==="Μητούδης Δημήτρης").map(p=>{
+              const pAsgn = assignments.filter(a=>a.partnerId===p.id).map(a=>{ const pr=PROJECTS.find(x=>x.id===a.projectId); return pr?{name:pr.name,shift:a.shift,days:a.days}:null;}).filter(Boolean);
+              return (
               <div key={p.id} style={S.card}>
                 <div style={{display:"flex",gap:12}}>
                   <div style={{width:42,height:42,borderRadius:"50%",background:"#1a2540",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:"#f5c518",flexShrink:0}}>Μ</div>
@@ -1734,12 +1759,16 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
                     <div style={S.cardName}>{p.name}</div>
                     <div style={S.cardSub}>{p.role} · €{p.rate}/ώρα</div>
                     {p.notes && <div style={S.cardSub}>{p.notes}</div>}
+                    {pAsgn.map((a,i)=><div key={i} style={{...S.cardSub,color:"#5b8cff"}}>📋 {a.name} · {a.shift} · {a.days}</div>)}
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
             <div style={{fontSize:11,fontWeight:700,letterSpacing:2,color:"#445",textTransform:"uppercase",marginBottom:8,marginTop:12}}>Λοιποί Συνεργάτες</div>
-            {partners.filter(p=>!p.role.includes("Μητούδη")&&p.name!=="Μητούδης Δημήτρης").map(p=>(
+            {partners.filter(p=>!p.role.includes("Μητούδη")&&p.name!=="Μητούδης Δημήτρης").map(p=>{
+              const pAsgn = assignments.filter(a=>a.partnerId===p.id).map(a=>{ const pr=PROJECTS.find(x=>x.id===a.projectId); return pr?{name:pr.name,shift:a.shift,days:a.days}:null;}).filter(Boolean);
+              return (
               <div key={p.id} style={S.card}>
                 <div style={{display:"flex",gap:12}}>
                   <div style={{width:42,height:42,borderRadius:"50%",background:"#1a2540",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,color:"#a78bfa",flexShrink:0}}>Ε</div>
@@ -1747,10 +1776,12 @@ RATES: Εταιρ.μηχ: κανον€5.30|υπερ€6.35|νύχτα€7.90|Κ
                     <div style={S.cardName}>{p.name}</div>
                     <div style={S.cardSub}>{p.role} · €{p.rate}/ώρα</div>
                     {p.notes && <div style={S.cardSub}>{p.notes}</div>}
+                    {pAsgn.map((a,i)=><div key={i} style={{...S.cardSub,color:"#5b8cff"}}>📋 {a.name} · {a.shift} · {a.days}</div>)}
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
